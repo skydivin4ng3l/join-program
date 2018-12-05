@@ -27,11 +27,30 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
     auto outterReader = outter->getReader();
     auto innerReader = inner->getReader();
     std::unordered_multimap<std::string,Tuple*> outterJoinIndex;
+    Block* outputBlock = this->memoryManager->allocateEmptyBlock();
 
     while ( (this->memoryManager->getNumFreeBlocks()-1 > 1)  && outterReader->hasNext() ) {
-       for(auto& t : outterReader->nextBlock()->getTuples() ) {
-           outterJoinIndex.insert( std::make_pair(t->getData(outterJoinAttributeIndex),t));
+       for(auto& currentOuterTupel : outterReader->nextBlock()->getTuples() ) {
+           outterJoinIndex.insert( std::make_pair(currentOuterTupel->getData(outterJoinAttributeIndex),currentOuterTupel));
        }
+       while ( (this->memoryManager->getNumFreeBlocks()-1 > 0) && innerReader->hasNext() ) {
+           Block* currentInnerBlock = innerReader->nextBlock();
+           for(auto& currentInnerTupel: currentInnerBlock->getTuples() ){
+               auto range = outterJoinIndex.equal_range(currentInnerTupel->getData(innerJoinAttributeIndex));
+               for (auto it = range.first; it != range.second; ++it) {
+                   Tuple joinedTupel;
+                   joinedTupel = *currentInnerTupel;
+                   //TODO: it->second. HOWTO combine tupel
+                   if (outputBlock->addTuple(joinedTupel)) {} else {
+                       outputBlock->writeBlockToDisk(outputFile);
+                       memoryManager->clearBlock(outputBlock);
+                       outputBlock->addTuple(joinedTupel);
+                   }
+                   }
+               }
+           }
+       }
+       
     }
 
     for(auto& keyWithTupel: outterJoinIndex) {

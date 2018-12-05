@@ -8,6 +8,9 @@
 
 int main() {
 
+	//console print optimization
+	std::ios::sync_with_stdio(false);
+
 	//feel free to change the parameters to see how your program reacts
     MemoryManager manager = MemoryManager(10,50000);
 

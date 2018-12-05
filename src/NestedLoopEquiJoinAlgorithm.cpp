@@ -11,7 +11,7 @@ NestedLoopEquiJoinAlgorithm::NestedLoopEquiJoinAlgorithm(MemoryManager* memoryMa
 
 void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile) {
     //Task: implement
-    // check which relation is the bigger one, smaller one should be outside
+    // check which relation is the bigger one, smaller one should be outside LEF IS ALWAYS OUTTER
     Relation* outter = right;
     Relation* inner = left;
     int outterJoinAttributeIndex = rightJoinAttributeIndex;
@@ -35,7 +35,7 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
     }
 
     for(auto& keyWithTupel: outterJoinIndex) {
-        cout << "Key: " << keyWithTupel.first << " associated with Tupel: ";
+        std::cout << "Key: " << keyWithTupel.first << " associated with Tupel: ";
         keyWithTupel.second->printData();
     }
 }

@@ -8,6 +8,8 @@
 
 #include "Relation.h"
 #include "MemoryManager.h"
+#include <unordered_map>
+
 
 typedef std::pair<std::unordered_multimap<std::string,Tuple*>,std::vector<Block*>> joinStringTupleIndexAndBlockPointerVectorPair;
 

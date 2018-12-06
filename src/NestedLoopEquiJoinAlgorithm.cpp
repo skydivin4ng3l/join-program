@@ -2,8 +2,7 @@
 // Created by leon on 11/13/18.
 //
 
-#include <unordered_map>
-#include <stack>
+
 #include "NestedLoopEquiJoinAlgorithm.h"
 
 NestedLoopEquiJoinAlgorithm::NestedLoopEquiJoinAlgorithm(MemoryManager* memoryManager) {
@@ -80,7 +79,7 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
         }
     }
     memoryManager->deleteBlock(outputBlock);
-    
+
 }
 
 

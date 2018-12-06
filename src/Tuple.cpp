@@ -51,3 +51,10 @@ string Tuple::toWritableForm() {
 	return output.str();
 }
 
+vector<string> Tuple::tupleToStringVector() {
+	vector<string> outputVector;
+	for (int i = 0; i < this->getAttributeCount(); ++i) {
+		outputVector.push_back(this->getData(i));
+	}
+	return outputVector;
+}

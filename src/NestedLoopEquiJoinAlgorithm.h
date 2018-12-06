@@ -9,6 +9,8 @@
 #include "Relation.h"
 #include "MemoryManager.h"
 
+typedef std::pair<std::unordered_multimap<std::string,Tuple*>,std::stack<Block*>> joinStringTupleIndexBlockPointerStackPair;
+
 class NestedLoopEquiJoinAlgorithm {
 
 public:
@@ -23,6 +25,9 @@ public:
      * The resulting tuples should be written to the outputFile.
      * */
     void join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile);
+
+private:
+    joinStringTupleIndexBlockPointerStackPair buildDatastructForOuterRelationChunk(BlockReader* outerReader, int joinAttributeIndex);
 };
 
 

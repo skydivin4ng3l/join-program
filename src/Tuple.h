@@ -31,6 +31,8 @@ class Tuple {
 		string getData(int);
 		//returns the size of this tuple in Bytes
 		int getSizeInBytes();
+		//returns the tuple data as a vector of strings
+		vector<string> tupleToStringVector();
 
 private:
 		Tuple(vector<string>);

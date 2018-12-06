@@ -10,14 +10,14 @@ NestedLoopEquiJoinAlgorithm::NestedLoopEquiJoinAlgorithm(MemoryManager* memoryMa
     this->memoryManager = memoryManager;
 }
 
-joinStringTupleIndexBlockPointerStackPair NestedLoopEquiJoinAlgorithm::buildDatastructForOuterRelationChunk(BlockReader* outerReader, int joinAttributeIndex){
+joinStringTupleIndexAndBlockPointerVectorPair NestedLoopEquiJoinAlgorithm::buildDatastructForOuterRelationChunk(BlockReader* outerReader, int joinAttributeIndex){
     std::unordered_multimap<std::string,Tuple*> indexJoinAttributeToTuple;
-    std::stack<Block*> loadedOuterRelationChunk;
+    std::vector<Block*> loadedOuterRelationChunk;
 
     while (memoryManager->getNumFreeBlocks() - 1 > 1 && outerReader->hasNext() ) {
         //TODO: actually load the memory full with outer blocks and put them into a pointer data structure
         Block* loadedBlock = outerReader->nextBlock();
-        loadedOuterRelationChunk.push(loadedBlock);
+        loadedOuterRelationChunk.push_back(loadedBlock);
         for(auto& currentOuterTuple : loadedBlock->getTuples() ) {
             indexJoinAttributeToTuple.insert( std::make_pair(currentOuterTuple->getData(joinAttributeIndex),currentOuterTuple));
         }
@@ -42,16 +42,15 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
     
     auto outerReader = outer->getReader();
     auto innerReader = inner->getReader();
-    std::unordered_multimap<std::string,Tuple*> outerJoinIndex;
     Block* outputBlock = memoryManager->allocateEmptyBlock();
 
     while ( outerReader->hasNext() ) {
-        joinStringTupleIndexBlockPointerStackPair outerBlocksDataStructChunk = buildDatastructForOuterRelationChunk(outerReader, outerJoinAttributeIndex);
+        joinStringTupleIndexAndBlockPointerVectorPair outerBlocksDataStructChunk = buildDatastructForOuterRelationChunk(outerReader, outerJoinAttributeIndex);
 
        while (memoryManager->getNumFreeBlocks() - 1 > 0 && innerReader->hasNext() ) {
            Block* currentInnerBlock = innerReader->nextBlock();
            for(auto& currentInnerTuple: currentInnerBlock->getTuples() ){
-               auto range = outerJoinIndex.equal_range(currentInnerTuple->getData(innerJoinAttributeIndex));
+               auto range = outerBlocksDataStructChunk.first.equal_range(currentInnerTuple->getData(innerJoinAttributeIndex));
                for (auto it = range.first; it != range.second; ++it) {
                    //TODO: Optimize combination of tuple
                    std::vector<std::string> joinedTupleStrings;
@@ -76,14 +75,12 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
            }
            memoryManager->deleteBlock(currentInnerBlock);
        }
-
+        for(auto blockToUnload : outerBlocksDataStructChunk.second) {
+            memoryManager->deleteBlock(blockToUnload);
+        }
     }
     memoryManager->deleteBlock(outputBlock);
-
-    for(auto& keyWithTuple: outerJoinIndex) {
-        std::cout << "Key: " << keyWithTuple.first << " associated with Tuple: ";
-        keyWithTuple.second->printData();
-    }
+    
 }
 
 

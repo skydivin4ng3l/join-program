@@ -9,7 +9,7 @@
 #include "Relation.h"
 #include "MemoryManager.h"
 
-typedef std::pair<std::unordered_multimap<std::string,Tuple*>,std::stack<Block*>> joinStringTupleIndexBlockPointerStackPair;
+typedef std::pair<std::unordered_multimap<std::string,Tuple*>,std::vector<Block*>> joinStringTupleIndexAndBlockPointerVectorPair;
 
 class NestedLoopEquiJoinAlgorithm {
 
@@ -27,7 +27,7 @@ public:
     void join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile);
 
 private:
-    joinStringTupleIndexBlockPointerStackPair buildDatastructForOuterRelationChunk(BlockReader* outerReader, int joinAttributeIndex);
+    joinStringTupleIndexAndBlockPointerVectorPair buildDatastructForOuterRelationChunk(BlockReader* outerReader, int joinAttributeIndex);
 };
 
 

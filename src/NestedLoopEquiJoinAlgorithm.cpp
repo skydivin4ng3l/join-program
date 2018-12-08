@@ -13,7 +13,7 @@ joinStringTupleIndexAndBlockPointerVectorPair NestedLoopEquiJoinAlgorithm::build
     std::unordered_multimap<std::string,Tuple*> indexJoinAttributeToTuple;
     std::vector<Block*> loadedOuterRelationChunk;
 
-    while (memoryManager->getNumFreeBlocks() - 1 > 1 && outerReader->hasNext() ) {
+    while (memoryManager->getNumFreeBlocks() > 1 && outerReader->hasNext() ) {
         //TODO: actually load the memory full with outer blocks and put them into a pointer data structure
         Block* loadedBlock = outerReader->nextBlock();
         loadedOuterRelationChunk.push_back(loadedBlock);
@@ -46,7 +46,7 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
     while ( outerReader->hasNext() ) {
         joinStringTupleIndexAndBlockPointerVectorPair outerBlocksDataStructChunk = buildDatastructForOuterRelationChunk(outerReader, outerJoinAttributeIndex);
 
-       while (memoryManager->getNumFreeBlocks() - 1 > 0 && innerReader->hasNext() ) {
+       while (memoryManager->getNumFreeBlocks() > 0 && innerReader->hasNext() ) {
            Block* currentInnerBlock = innerReader->nextBlock();
            for(auto& currentInnerTuple: currentInnerBlock->getTuples() ){
                auto range = outerBlocksDataStructChunk.first.equal_range(currentInnerTuple->getData(innerJoinAttributeIndex));
@@ -78,6 +78,7 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
             memoryManager->deleteBlock(blockToUnload);
         }
     }
+    outputBlock->writeBlockToDisk(outputFile);
     memoryManager->deleteBlock(outputBlock);
 
 }

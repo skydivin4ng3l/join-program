@@ -3,6 +3,7 @@
 //
 
 
+#include <cmath>
 #include "NestedLoopEquiJoinAlgorithm.h"
 
 NestedLoopEquiJoinAlgorithm::NestedLoopEquiJoinAlgorithm(MemoryManager* memoryManager) {
@@ -25,20 +26,30 @@ joinStringTupleIndexAndBlockPointerVectorPair NestedLoopEquiJoinAlgorithm::build
 }
 
 void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile) {
-    //Task: implement
-    // check which relation is the bigger one, smaller one should be outside LEF IS ALWAYS outer
+    // check which relation is the bigger one, one with less blocks should be outside
     Relation* outer = right;
     Relation* inner = left;
     int outerJoinAttributeIndex = rightJoinAttributeIndex;
     int innerJoinAttributeIndex = leftJoinAttributeIndex;
 
-    if ( left->getSize() <= right->getSize() ) {
+    auto leftReader = left->getReader();
+    auto rightReader = right->getReader();
+    Block* leftPeekBlock =leftReader->nextBlock();
+    Block* rightPeekBlock =rightReader->nextBlock();
+    int guessedLeftBlockCount = static_cast<int>( std::ceil(static_cast<double>(left->getSize() ) / static_cast<double>( leftPeekBlock->getCurrentSizeBytes() ) ) );
+    int guessedRightBlockCount = static_cast<int>( std::ceil(static_cast<double>(right->getSize() ) / static_cast<double>( rightPeekBlock->getCurrentSizeBytes() ) ) );
+    memoryManager->deleteBlock(leftPeekBlock);
+    memoryManager->deleteBlock(rightPeekBlock);
+
+    if ( guessedLeftBlockCount <= guessedRightBlockCount ) {
         outer = left;
         inner = right;
         innerJoinAttributeIndex = rightJoinAttributeIndex;
         outerJoinAttributeIndex = leftJoinAttributeIndex;
+        cout << "switching Relation order " << endl;
     }
-    
+
+    //actual joining
     auto outerReader = outer->getReader();
     auto innerReader = inner->getReader();
     Block* outputBlock = memoryManager->allocateEmptyBlock();

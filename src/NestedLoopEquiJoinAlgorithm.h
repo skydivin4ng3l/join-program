@@ -29,7 +29,8 @@ public:
     void join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile);
 
 private:
-    joinStringTupleIndexAndBlockPointerVectorPair buildDatastructForOuterRelationChunk(BlockReader* outerReader, int joinAttributeIndex);
+    joinStringTupleIndexAndBlockPointerVectorPair buildDatastructureForOuterRelationChunk(BlockReader *outerReader,
+                                                                                          int joinAttributeIndex);
 };
 
 

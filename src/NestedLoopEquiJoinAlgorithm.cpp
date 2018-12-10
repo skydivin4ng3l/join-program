@@ -10,12 +10,13 @@ NestedLoopEquiJoinAlgorithm::NestedLoopEquiJoinAlgorithm(MemoryManager* memoryMa
     this->memoryManager = memoryManager;
 }
 
-joinStringTupleIndexAndBlockPointerVectorPair NestedLoopEquiJoinAlgorithm::buildDatastructForOuterRelationChunk(BlockReader* outerReader, int joinAttributeIndex){
+joinStringTupleIndexAndBlockPointerVectorPair NestedLoopEquiJoinAlgorithm::buildDatastructureForOuterRelationChunk(
+        BlockReader *outerReader, int joinAttributeIndex){
     std::unordered_multimap<std::string,Tuple*> indexJoinAttributeToTuple;
     std::vector<Block*> loadedOuterRelationChunk;
 
     while (memoryManager->getNumFreeBlocks() > 1 && outerReader->hasNext() ) {
-        //TODO: actually load the memory full with outer blocks and put them into a pointer data structure
+        //load the memory full with outer blocks and put them into a pointer data structure
         Block* loadedBlock = outerReader->nextBlock();
         loadedOuterRelationChunk.push_back(loadedBlock);
         for(auto& currentOuterTuple : loadedBlock->getTuples() ) {
@@ -32,16 +33,7 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
     int outerJoinAttributeIndex = rightJoinAttributeIndex;
     int innerJoinAttributeIndex = leftJoinAttributeIndex;
 
-    auto leftReader = left->getReader();
-    auto rightReader = right->getReader();
-    Block* leftPeekBlock =leftReader->nextBlock();
-    Block* rightPeekBlock =rightReader->nextBlock();
-    int guessedLeftBlockCount = static_cast<int>( std::ceil(static_cast<double>(left->getSize() ) / static_cast<double>( leftPeekBlock->getCurrentSizeBytes() ) ) );
-    int guessedRightBlockCount = static_cast<int>( std::ceil(static_cast<double>(right->getSize() ) / static_cast<double>( rightPeekBlock->getCurrentSizeBytes() ) ) );
-    memoryManager->deleteBlock(leftPeekBlock);
-    memoryManager->deleteBlock(rightPeekBlock);
-
-    if ( guessedLeftBlockCount <= guessedRightBlockCount ) {
+    if ( left->getSize() < right->getSize() ) {
         outer = left;
         inner = right;
         innerJoinAttributeIndex = rightJoinAttributeIndex;
@@ -55,12 +47,13 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
     Block* outputBlock = memoryManager->allocateEmptyBlock();
 
     while ( outerReader->hasNext() ) {
-        joinStringTupleIndexAndBlockPointerVectorPair outerBlocksDataStructChunk = buildDatastructForOuterRelationChunk(outerReader, outerJoinAttributeIndex);
+        joinStringTupleIndexAndBlockPointerVectorPair outerBlocksChunkDataStructure = buildDatastructureForOuterRelationChunk(
+                outerReader, outerJoinAttributeIndex);
 
        while (memoryManager->getNumFreeBlocks() > 0 && innerReader->hasNext() ) {
            Block* currentInnerBlock = innerReader->nextBlock();
            for(auto& currentInnerTuple: currentInnerBlock->getTuples() ){
-               auto range = outerBlocksDataStructChunk.first.equal_range(currentInnerTuple->getData(innerJoinAttributeIndex));
+               auto range = outerBlocksChunkDataStructure.first.equal_range(currentInnerTuple->getData(innerJoinAttributeIndex));
                for (auto it = range.first; it != range.second; ++it) {
                    //TODO: Optimize combination of tuple
                    std::vector<std::string> joinedTupleStrings;
@@ -85,7 +78,7 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
            }
            memoryManager->deleteBlock(currentInnerBlock);
        }
-        for(auto blockToUnload : outerBlocksDataStructChunk.second) {
+        for(auto blockToUnload : outerBlocksChunkDataStructure.second) {
             memoryManager->deleteBlock(blockToUnload);
         }
     }

@@ -17,6 +17,8 @@ add_executable(${PROJECT_NAME} src/main.cpp
         src/utils.cpp
         src/NestedLoopEquiJoinAlgorithm.h
         src/NestedLoopEquiJoinAlgorithm.cpp
+        src/SimpleSortBasedTwoPassEquiJoinAlgorithm.h
+        src/SimpleSortBasedTwoPassEquiJoinAlgorithm.cpp
         src/MemoryManager.h
         src/MemoryManager.cpp
         )

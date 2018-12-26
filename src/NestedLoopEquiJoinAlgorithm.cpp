@@ -3,7 +3,7 @@
 //
 
 
-#include <cmath>
+//#include <cmath>
 #include "NestedLoopEquiJoinAlgorithm.h"
 
 NestedLoopEquiJoinAlgorithm::NestedLoopEquiJoinAlgorithm(MemoryManager* memoryManager) {
@@ -38,7 +38,7 @@ void NestedLoopEquiJoinAlgorithm::join(Relation* left, Relation* right, int left
         inner = right;
         innerJoinAttributeIndex = rightJoinAttributeIndex;
         outerJoinAttributeIndex = leftJoinAttributeIndex;
-        cout << "switching Relation order " << endl;
+        //cout << "switching Relation order " << endl;
     }
 
     //actual joining

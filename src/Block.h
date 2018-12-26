@@ -26,7 +26,8 @@ class Block {
 		int getCurrentSizeBytes();
 		//Appends all Tuples in this Block to the specified file
 		void writeBlockToDisk(string file);
-
+		//print Status (Block filling)
+		void printBlockSummary();
 
 private:
 		vector<Tuple*> tuples;

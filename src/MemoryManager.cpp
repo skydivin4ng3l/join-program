@@ -41,6 +41,13 @@ void MemoryManager::deleteBlock(Block* block) {
     assertIntegrity();
 }
 
+void MemoryManager::deleteBlockOnly(Block* block){
+    assertIntegrity();
+    delete block;
+    numFreeBlocks +=1;
+    assertIntegrity();
+}
+
 int MemoryManager::getNumFreeBlocks() {
     return numFreeBlocks;
 }
@@ -123,5 +130,13 @@ void MemoryManager::assertIntegrity() {
         throw domain_error("Internal consistency error: Tuples demand more memory than blocks that are avaialble");
     }*/
 
+}
+
+void MemoryManager::printStatus() {
+    cout << "---------------------------------------------------------------Memory consumption report---------------------------------------------------------------" << endl;
+    cout << "Block capacity: " << blockSizeInBytes << " Bytes" << endl;
+    cout << "allocated Blocks: " << (maxNumBlocks-numFreeBlocks) << "/" << maxNumBlocks << endl;
+    cout << "allocated Memory (tuples):" << memoryUsedByTuples << "/" << getMaximumMemoryInBytes() << " Bytes" << endl;
+    cout << "-------------------------------------------------------------------------------------------------------------------------------------------------------" << endl;
 }
 

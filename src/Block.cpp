@@ -76,3 +76,10 @@ void Block::writeBlockToDisk(string file) {
 	for_each(tuples.begin(), tuples.end(), writeTuple);
 	blockWriteStream.close();
 }
+
+void Block::printBlockSummary() {
+	cout << "------------------------------Block Summary-----------------------------------------------" <<endl;
+	cout << "contains " << tuples.size() << "tuples" << endl;
+	cout << "used memory" << getCurrentSizeBytes() << "/" << blocksize << endl;
+	cout << "------------------------------------------------------------------------------------------" << endl;
+}

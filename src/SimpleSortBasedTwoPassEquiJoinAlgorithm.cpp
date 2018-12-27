@@ -11,13 +11,16 @@ SimpleSortBasedTwoPassEquiJoinAlgorithm::SimpleSortBasedTwoPassEquiJoinAlgorithm
 }
 
 std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Relation *relation, int joinAttributeIndex){
-    std::multimap<std::string,Tuple*> indexJoinAttributeToTuple;
+    joinStringTupleIndex indexJoinAttributeToTuple;
     std::vector<Block*> loadedRelationChunk;
-    std::string sortedRelation = "Relation_"+ static_cast<std::string>(relation)+"_SortedBy_"+ static_cast<std::string>(joinAttributeIndex)+"_JoinAttribute.txt";
+    std::hash<std::string> hash_fn;
+    std::size_t hashedFileRelationFileName = hash_fn(relation->getFile());
+    std::stringstream ss;
+    ss << "Relation_" << hashedFileRelationFileName << "_SortedBy_"<< joinAttributeIndex << "_JoinAttribute.txt";
+    std::string sortedRelationFile = ss.str();
     //deletes output from previous runs:
-    remove(sortedRelation.c_str());
+    remove(sortedRelationFile.c_str());
     std::vector<BlockReader*> partialFilesReaders;
-    //std::vector<std::string> partialSortedFiles;
     int partialSortedFileNumber = 0;
 
     auto relationReader = relation->getReader();
@@ -30,7 +33,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     // repeat until relation complete
 
     while(relationReader->hasNext()){
-        std::string partialSortedFileName = "partialSorted_"+ static_cast<std::string>(partialSortedFileNumber)+".txt";
+        std::string partialSortedFileName = "partialSorted_"+ std::to_string(partialSortedFileNumber)+".txt";
         //deletes output from previous runs:
         remove(partialSortedFileName.c_str());
         //Fill Ram with blocks
@@ -38,9 +41,9 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
 
             Block* loadedBlock = relationReader->nextBlock();
             loadedRelationChunk.push_back(loadedBlock);
-            for(auto& currentOuterTuple : loadedBlock->getTuples() ) {
+            for(auto& currentTuple : loadedBlock->getTuples() ) {
                 // order tuples by join attribute
-                indexJoinAttributeToTuple.insert( std::make_pair(currentOuterTuple->getData(joinAttributeIndex),currentOuterTuple));
+                indexJoinAttributeToTuple.insert( std::make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
             }
         }
         Block* outputBlock = memoryManager->allocateEmptyBlock();
@@ -83,12 +86,12 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         Block* outputBlock = memoryManager->allocateEmptyBlock();
         for(auto it=sortedTuples.begin(); it !=sortedTuples.end(); it++){
             if (outputBlock->addTuple(it->second)) {} else {
-                outputBlock->writeBlockToDisk(sortedRelation);
+                outputBlock->writeBlockToDisk(sortedRelationFile);
                 memoryManager->clearBlock(outputBlock);
                 outputBlock->addTuple(it->second);
             }
         }
-        outputBlock->writeBlockToDisk(sortedRelation);
+        outputBlock->writeBlockToDisk(sortedRelationFile);
         //free memory
         memoryManager->deleteBlock(outputBlock);
         for(auto blockToUnload : blocksToMerge) {
@@ -99,14 +102,14 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     }
 
 
-    return sortedRelation;
+    return sortedRelationFile;
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile) {
 
     //actual joining
-    std::string sortedLeft = twoPassMultiwayMergeSort(left,leftJoinAttributeIndex);
-    std::string sortedRight = twoPassMultiwayMergeSort(right, rightJoinAttributeIndex);
+    std::string sortedLeftFile = twoPassMultiwayMergeSort(left,leftJoinAttributeIndex);
+    std::string sortedRightFile = twoPassMultiwayMergeSort(right, rightJoinAttributeIndex);
     //TODO Phase 2: MergeR und S
     //1.
     //Jeweils ein Block
@@ -120,10 +123,84 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     //Gegebenenfalls nachladen
     //5.
     //Gebe alle Kombinationen aus
+    Relation sortedLeftRelation = Relation(sortedLeftFile,memoryManager);
+    Relation sortedRightRelation = Relation(sortedRightFile,memoryManager);
+    auto leftReader = sortedLeftRelation.getReader();
+    auto rightReader = sortedRightRelation.getReader();
+
     Block* outputBlock = memoryManager->allocateEmptyBlock();
+    while(all_of(leftReader,rightReader,[](BlockReader* reader){reader->hasNext();})) {
+        Block *loadedLeftBlock = leftReader->nextBlock();
+        vector<Block *> loadedLeftBlocks;
+        loadedLeftBlocks.push_back(loadedLeftBlock);
+        Block *loadedRightBlock = rightReader->nextBlock();
+        vector<Block *> loadedRightBlocks;
+        loadedRightBlocks.push_back(loadedRightBlock);
+        vector<Tuple *> leftTuples = loadedLeftBlock->getTuples();
+        vector<Tuple *> rightTuples = loadedRightBlock->getTuples();
+
+        //auto leftTupleIterator = leftTuples.begin();
+        //auto rightTupleIterator = rightTuples.begin();
+
+        //if(leftTupleIterator->getData(leftJoinAttributeIndex)<rightTupleIterator->getData(rightJoinAttributeIndex))
+
+        while(!leftTuples.empty() && !rightTuples.empty()) {
+            std::string smallestJoinAttributeLeft = leftTuples.front()->getData(rightJoinAttributeIndex);
+            std::string smallestJoinAttributeRight = rightTuples.front()->getData(rightJoinAttributeIndex);
+
+            int compareValue = smallestJoinAttributeLeft.compare(smallestJoinAttributeRight);
+            // equal 0; first char smaller or string shorter <0; first char greater or string longer >0
+            if ( compareValue == 0){
+                auto rightTupleIterator = rightTuples.begin();
+                bool joinPartnerAvailable = true;
+                while(joinPartnerAvailable) {
+                    joinTuples(outputFile, outputBlock, leftTuples.front(), *rightTupleIterator);
+                    if (rightTupleIterator == rightTuples.end()){
+
+                    }
+                    if(*rightTupleIterator != *(rightTupleIterator+1)) {
+                        break;
+                    }
 
 
+                }
+            } else if (compareValue <0 ) {
+                leftTuples.erase(leftTuples.begin());
+
+            }
+        }
+
+        /*joinStringTupleIndex leftIndex;
+        joinStringTupleIndex rightIndex;
+        for (auto &currentTuple : loadedLeftBlock->getTuples()) {
+            leftIndex.insert(std::make_pair(currentTuple->getData(leftJoinAttributeIndex), currentTuple));
+        }
+        for (auto &currentTuple : loadedRightBlock->getTuples()) {
+            rightIndex.insert(std::make_pair(currentTuple->getData(rightJoinAttributeIndex), currentTuple));
+        }
+*/
+
+    }
 }
 
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::joinTuples(const string &outputFile, Block *outputBlock,
+                                                         Tuple* &leftTuple, Tuple* &rightTuple) const {
+    vector<string> joinedTupleStrings;
+    vector<string> leftTupleStrings = leftTuple->tupleToStringVector();
+    vector<string> rightTupleStrings = rightTuple->tupleToStringVector();
+    joinedTupleStrings.reserve(leftTupleStrings.size()+rightTupleStrings.size());
+    joinedTupleStrings.insert(joinedTupleStrings.end(),leftTupleStrings.begin(),leftTupleStrings.end());
+    joinedTupleStrings.insert(joinedTupleStrings.end(),rightTupleStrings.begin(),rightTupleStrings.end());
+    Tuple *joinedTuple;
+    if (!memoryManager->canCreateTuple(joinedTupleStrings)) {
+                    outputBlock->writeBlockToDisk(outputFile);
+                    memoryManager->clearBlock(outputBlock);
+                }
+    joinedTuple = memoryManager->createTuple(joinedTupleStrings);
 
-
+    if (outputBlock->addTuple(joinedTuple)) {} else {
+                    outputBlock->writeBlockToDisk(outputFile);
+                    memoryManager->clearBlock(outputBlock);
+                    outputBlock->addTuple(joinedTuple);
+                }
+}

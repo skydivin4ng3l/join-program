@@ -8,7 +8,7 @@
 
 #include "Relation.h"
 #include "MemoryManager.h"
-#include <unordered_map>
+#include <map>
 
 
 typedef std::multimap<std::string,Tuple*> joinStringTupleIndex;
@@ -30,7 +30,10 @@ public:
     void join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile);
 
 private:
-    std::string twoPassMultiwayMergeSort(BlockReader *outerReader, int joinAttributeIndex);
+    std::string twoPassMultiwayMergeSort(Relation *relation, int joinAttributeIndex);
+
+    void
+    joinTuples(const string &outputFile, Block *outputBlock, Tuple *& leftTuples, Tuple *& rightTuples) const;
 };
 
 

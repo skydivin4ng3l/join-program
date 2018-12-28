@@ -128,23 +128,22 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     auto leftReader = sortedLeftRelation.getReader();
     auto rightReader = sortedRightRelation.getReader();
 
+    vector<Block *> loadedLeftBlocks;
+    vector<Block *> loadedRightBlocks;
+    joinStringTupleIndex leftIndex;
+    joinStringTupleIndex rightIndex;
+
     Block* outputBlock = memoryManager->allocateEmptyBlock();
     while(all_of(leftReader,rightReader,[](BlockReader* reader){reader->hasNext();})) {
         Block *loadedLeftBlock = leftReader->nextBlock();
-        vector<Block *> loadedLeftBlocks;
         loadedLeftBlocks.push_back(loadedLeftBlock);
         Block *loadedRightBlock = rightReader->nextBlock();
-        vector<Block *> loadedRightBlocks;
         loadedRightBlocks.push_back(loadedRightBlock);
-        vector<Tuple *> leftTuples = loadedLeftBlock->getTuples();
-        vector<Tuple *> rightTuples = loadedRightBlock->getTuples();
 
-        joinStringTupleIndex leftIndex;
-        joinStringTupleIndex rightIndex;
         fillBufferIndex(leftJoinAttributeIndex, loadedLeftBlock, leftIndex);
         fillBufferIndex(rightJoinAttributeIndex, loadedRightBlock, rightIndex);
         
-        while (!rightIndex.empty()) {
+        while (!rightIndex.empty() || !leftIndex.empty()) {
             auto smallestLeft = leftIndex.begin();
             auto smallestRight = rightIndex.begin();
             int compareValue = smallestLeft->first.compare(smallestRight->first);
@@ -152,15 +151,15 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                 //preload all left/right tuples with same join attribute so we can join them all together and then delete them on both sides
                 while (smallestRight->first == (rightIndex.end()--)->first && rightReader->hasNext()) { //TODO What if the Memory is not enough?
                     //fill buffer
-                    Block *preLoadedRightBlock = rightReader->nextBlock();
-                    loadedRightBlocks.push_back(preLoadedRightBlock);
-                    fillBufferIndex(rightJoinAttributeIndex, preLoadedRightBlock, rightIndex);
+                    Block *postLoadedRightBlock = rightReader->nextBlock();
+                    loadedRightBlocks.push_back(postLoadedRightBlock);
+                    fillBufferIndex(rightJoinAttributeIndex, postLoadedRightBlock, rightIndex);
                 }
                 while (smallestLeft->first == (leftIndex.end()--)->first && leftReader->hasNext()) { //TODO What if the Memory is not enough?
                     //fill buffer
-                    Block *preLoadedLeftBlock = leftReader->nextBlock();
-                    loadedLeftBlocks.push_back(preLoadedLeftBlock);
-                    fillBufferIndex(leftJoinAttributeIndex, preLoadedLeftBlock, leftIndex);
+                    Block *postLoadedLeftBlock = leftReader->nextBlock();
+                    loadedLeftBlocks.push_back(postLoadedLeftBlock);
+                    fillBufferIndex(leftJoinAttributeIndex, postLoadedLeftBlock, leftIndex);
                 }
                 auto rightRange = rightIndex.equal_range(smallestRight->first);
                 auto leftRange = leftIndex.equal_range(smallestLeft->first);
@@ -171,16 +170,25 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                 }
                 removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft);
                 removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight);
-            } else if (compareValue < 0) { // equal 0; first char smaller or string shorter <0; first char greater or string longer >0
+            } else if (compareValue < 0) { // first char smaller or string shorter <0;
                 //there is no join partner for the smallest left therefore delete these tuples and free memory if block is empty
                 removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft);
-            } else if (compareValue > 0) { // equal 0; first char smaller or string shorter <0; first char greater or string longer >0
+            } else if (compareValue > 0) { // first char greater or string longer >0
                 //there is no join partner for the smallest right therefore delete these tuples and free memory if block is empty
                 removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight);
             }
-            //TODO check if left/right index is emtpy, rethink while condictions maybe move index out of while loops to prevent overwritting not completly empty indexies
         }
     }
+    outputBlock->writeBlockToDisk(outputFile);
+    memoryManager->deleteBlock(outputBlock);
+    for (auto currentBlock : loadedLeftBlocks){
+        memoryManager->deleteBlock(currentBlock);
+    }
+    for (auto currentBlock : loadedRightBlocks){
+        memoryManager->deleteBlock(currentBlock);
+    }
+    leftIndex.clear();
+    rightIndex.clear();
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeTuplesWithSameJoinAttribute(vector<Block *> &loadedBlocks,

@@ -4,6 +4,7 @@
 #include "Relation.h"
 #include "utils.h"
 #include "NestedLoopEquiJoinAlgorithm.h"
+#include "SimpleSortBasedTwoPassEquiJoinAlgorithm.h"
 #include <stdio.h>
 
 int main() {
@@ -28,7 +29,8 @@ int main() {
 
 	std::cout << "Joining Relation with size " << r1.getSize() << " and " << r2.getSize()  << " (In Bytes)" << endl;
 	//calculate actor/movie join:
-	NestedLoopEquiJoinAlgorithm* alg = new NestedLoopEquiJoinAlgorithm(&manager);
+	//NestedLoopEquiJoinAlgorithm* alg = new NestedLoopEquiJoinAlgorithm(&manager);
+	SimpleSortBasedTwoPassEquiJoinAlgorithm* alg = new SimpleSortBasedTwoPassEquiJoinAlgorithm(&manager);
 	alg->join(&r1,&r2,0,0,outputFile);
 
 	return 0;

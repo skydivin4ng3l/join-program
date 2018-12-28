@@ -34,6 +34,11 @@ private:
 
     void
     joinTuples(const string &outputFile, Block *outputBlock, Tuple *& leftTuples, Tuple *& rightTuples) const;
+
+    void fillBufferIndex(int JoinAttributeIndex, Block *loadedBlock, joinStringTupleIndex &indexStructure) const;
+
+    void removeTuplesWithSameJoinAttribute(vector<Block *> &loadedBlocks, joinStringTupleIndex &indexStructure,
+                                           const multimap<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *, std::less<std::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *>>>::iterator &smallestIterator);
 };
 
 

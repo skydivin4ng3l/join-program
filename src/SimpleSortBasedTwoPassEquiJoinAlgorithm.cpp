@@ -12,6 +12,7 @@ SimpleSortBasedTwoPassEquiJoinAlgorithm::SimpleSortBasedTwoPassEquiJoinAlgorithm
 std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Relation *relation, int joinAttributeIndex){
     joinStringTupleIndex indexJoinAttributeToTuple;
     std::vector<Block*> loadedRelationChunk;
+    loadedRelationChunk.resize(0);
     std::hash<std::string> hash_fn;
     std::size_t hashedFileRelationFileName = hash_fn(relation->getFile());
     std::stringstream ss;
@@ -30,14 +31,13 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     // print them to this file,
     // release Memory, add filename to returning string vector
     // repeat until relation complete
-    Block* outputBlock = memoryManager->allocateEmptyBlock();
 
     while(relationReader->hasNext()){
         std::string partialSortedFileName = "partialSorted_"+ std::to_string(partialSortedFileNumber)+".txt";
         //deletes output from previous runs:
         remove(partialSortedFileName.c_str());
         //Fill Ram with blocks
-        while (memoryManager->getNumFreeBlocks() > 0 && relationReader->hasNext() ) {
+        while (memoryManager->getNumFreeBlocks() > 1 && relationReader->hasNext() ) {
 
             Block* loadedBlock = relationReader->nextBlock();
             loadedRelationChunk.push_back(loadedBlock);
@@ -46,6 +46,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
                 indexJoinAttributeToTuple.insert( std::make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
             }
         }
+        Block* outputBlock = memoryManager->allocateEmptyBlock();
         //print the ordered chuck to disk
         for(auto it=indexJoinAttributeToTuple.begin(); it !=indexJoinAttributeToTuple.end(); it++){
             if (outputBlock->addTuple(it->second)) {} else {
@@ -56,9 +57,9 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         }
         outputBlock->writeBlockToDisk(partialSortedFileName);
         //free memory
-        memoryManager->clearBlock(outputBlock);
-        for(auto blockToUnload : loadedRelationChunk) {
-            memoryManager->deleteBlock(blockToUnload);
+        memoryManager->deleteBlock(outputBlock);
+        for(Block* blockToUnload : loadedRelationChunk) {
+            memoryManager->deleteBlockOnly(blockToUnload);
         }
         indexJoinAttributeToTuple.clear();
         partialSortedFileNumber++;
@@ -94,7 +95,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         //free memory
         memoryManager->deleteBlock(outputBlock);
         for(auto blockToUnload : blocksToMerge) {
-            memoryManager->deleteBlock(blockToUnload);
+            memoryManager->deleteBlockOnly(blockToUnload);
         }
         sortedTuples.clear();
 
@@ -141,8 +142,8 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
 
         fillBufferIndex(leftJoinAttributeIndex, loadedLeftBlock, leftIndex);
         fillBufferIndex(rightJoinAttributeIndex, loadedRightBlock, rightIndex);
-        
-        while (!rightIndex.empty() || !leftIndex.empty()) {
+        //TODO Handle one empty index, is there a problem?
+        while (!rightIndex.empty() && !leftIndex.empty()) {
             auto smallestLeft = leftIndex.begin();
             auto smallestRight = rightIndex.begin();
             int compareValue = smallestLeft->first.compare(smallestRight->first);
@@ -178,14 +179,20 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
             }
         }
     }
+    //cleanup
     outputBlock->writeBlockToDisk(outputFile);
     memoryManager->deleteBlock(outputBlock);
+
     for (auto currentBlock : loadedLeftBlocks){
         memoryManager->deleteBlock(currentBlock);
     }
+    loadedLeftBlocks.clear();
+
     for (auto currentBlock : loadedRightBlocks){
         memoryManager->deleteBlock(currentBlock);
     }
+    loadedRightBlocks.clear();
+
     leftIndex.clear();
     rightIndex.clear();
 }
@@ -197,12 +204,13 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeTuplesWithSameJoinAttribute(
     for (auto it = range.first; it != range.second; ++it){
                     memoryManager->deleteTuple(it->second);
                     indexStructure.erase(it);
-                }
+    }
     for (auto currentBlock : loadedBlocks){
                     if (currentBlock->getCurrentSizeBytes() == 0) {
                         memoryManager->deleteBlock(currentBlock);
                     }
-                }
+    }
+    loadedBlocks.erase(std::remove_if(loadedBlocks.begin(),loadedBlocks.end(), smallestIterator->first ), loadedBlocks.end());
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::fillBufferIndex(int JoinAttributeIndex, Block *loadedBlock,

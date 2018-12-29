@@ -30,13 +30,14 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     // print them to this file,
     // release Memory, add filename to returning string vector
     // repeat until relation complete
+    Block* outputBlock = memoryManager->allocateEmptyBlock();
 
     while(relationReader->hasNext()){
         std::string partialSortedFileName = "partialSorted_"+ std::to_string(partialSortedFileNumber)+".txt";
         //deletes output from previous runs:
         remove(partialSortedFileName.c_str());
         //Fill Ram with blocks
-        while (memoryManager->getNumFreeBlocks() > 1 && relationReader->hasNext() ) {
+        while (memoryManager->getNumFreeBlocks() > 0 && relationReader->hasNext() ) {
 
             Block* loadedBlock = relationReader->nextBlock();
             loadedRelationChunk.push_back(loadedBlock);
@@ -45,7 +46,6 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
                 indexJoinAttributeToTuple.insert( std::make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
             }
         }
-        Block* outputBlock = memoryManager->allocateEmptyBlock();
         //print the ordered chuck to disk
         for(auto it=indexJoinAttributeToTuple.begin(); it !=indexJoinAttributeToTuple.end(); it++){
             if (outputBlock->addTuple(it->second)) {} else {
@@ -56,7 +56,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         }
         outputBlock->writeBlockToDisk(partialSortedFileName);
         //free memory
-        memoryManager->deleteBlock(outputBlock);
+        memoryManager->clearBlock(outputBlock);
         for(auto blockToUnload : loadedRelationChunk) {
             memoryManager->deleteBlock(blockToUnload);
         }

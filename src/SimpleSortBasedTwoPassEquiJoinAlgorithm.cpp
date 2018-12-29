@@ -210,7 +210,7 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeTuplesWithSameJoinAttribute(
                         memoryManager->deleteBlock(currentBlock);
                     }
     }
-    loadedBlocks.erase(std::remove_if(loadedBlocks.begin(),loadedBlocks.end(), smallestIterator->first ), loadedBlocks.end());
+    loadedBlocks.erase(std::remove_if(loadedBlocks.begin(),loadedBlocks.end(), [&](Block* block) -> bool {return block->getCurrentSizeBytes() == 0; } ), loadedBlocks.end());
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::fillBufferIndex(int JoinAttributeIndex, Block *loadedBlock,

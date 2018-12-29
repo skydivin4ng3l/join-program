@@ -149,13 +149,13 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
             int compareValue = smallestLeft->first.compare(smallestRight->first);
             if (compareValue == 0) { // equal 0; first char smaller or string shorter <0; first char greater or string longer >0
                 //preload all left/right tuples with same join attribute so we can join them all together and then delete them on both sides
-                while (smallestRight->first == (rightIndex.end()--)->first && rightReader->hasNext()) { //TODO What if the Memory is not enough?
+                while (smallestRight->first == rightIndex.rbegin()->first && rightReader->hasNext() && memoryManager->getNumFreeBlocks() >= 1) { //TODO What if the Memory is not enough?
                     //fill buffer
                     Block *postLoadedRightBlock = rightReader->nextBlock();
                     loadedRightBlocks.push_back(postLoadedRightBlock);
                     fillBufferIndex(rightJoinAttributeIndex, postLoadedRightBlock, rightIndex);
                 }
-                while (smallestLeft->first == (leftIndex.end()--)->first && leftReader->hasNext()) { //TODO What if the Memory is not enough?
+                while (smallestLeft->first == leftIndex.rbegin()->first && leftReader->hasNext() && memoryManager->getNumFreeBlocks() >= 1) { //TODO What if the Memory is not enough?
                     //fill buffer
                     Block *postLoadedLeftBlock = leftReader->nextBlock();
                     loadedLeftBlocks.push_back(postLoadedLeftBlock);
@@ -168,6 +168,9 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                         joinTuples(outputFile,outputBlock,leftIt->second, rightIt->second );
                     }
                 }
+                //TODO how to delete tuples / blocks that are not yet printed to the outputfile but we need to get rid of the blocks and tuples
+                //may be we here should have a custom only block deletion Funktion instead of reusing the removeTuplesWithSameJoinAttribute funktion
+                //cause we know we will need the tuples of the output block, but how to delete the tuples after we printed them, will this be done by the deltion/clearance of the outputblock?
                 removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft);
                 removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight);
             } else if (compareValue < 0) { // first char smaller or string shorter <0;
@@ -179,8 +182,10 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
             }
         }
     }
-    //cleanup
+    //print the block never the less
     outputBlock->writeBlockToDisk(outputFile);
+
+    //cleanup
     memoryManager->deleteBlock(outputBlock);
 
     for (auto currentBlock : loadedLeftBlocks){

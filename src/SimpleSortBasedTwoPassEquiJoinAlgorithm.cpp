@@ -12,6 +12,7 @@ SimpleSortBasedTwoPassEquiJoinAlgorithm::SimpleSortBasedTwoPassEquiJoinAlgorithm
 std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Relation *relation, int joinAttributeIndex){
     joinStringTupleIndex indexJoinAttributeToTuple;
     std::vector<Block*> loadedRelationChunk;
+    loadedRelationChunk.resize(0);
     std::hash<std::string> hash_fn;
     std::size_t hashedFileRelationFileName = hash_fn(relation->getFile());
     std::stringstream ss;
@@ -57,8 +58,8 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         outputBlock->writeBlockToDisk(partialSortedFileName);
         //free memory
         memoryManager->deleteBlock(outputBlock);
-        for(auto blockToUnload : loadedRelationChunk) {
-            memoryManager->deleteBlock(blockToUnload);
+        for(Block* blockToUnload : loadedRelationChunk) {
+            memoryManager->deleteBlockOnly(blockToUnload);
         }
         indexJoinAttributeToTuple.clear();
         partialSortedFileNumber++;
@@ -94,7 +95,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         //free memory
         memoryManager->deleteBlock(outputBlock);
         for(auto blockToUnload : blocksToMerge) {
-            memoryManager->deleteBlock(blockToUnload);
+            memoryManager->deleteBlockOnly(blockToUnload);
         }
         sortedTuples.clear();
 

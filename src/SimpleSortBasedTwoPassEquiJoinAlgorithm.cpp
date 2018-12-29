@@ -3,7 +3,6 @@
 //
 
 
-//#include <cmath>
 #include "SimpleSortBasedTwoPassEquiJoinAlgorithm.h"
 
 SimpleSortBasedTwoPassEquiJoinAlgorithm::SimpleSortBasedTwoPassEquiJoinAlgorithm(MemoryManager* memoryManager) {
@@ -69,7 +68,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     }
 
     //read and merge all sorted partial files
-    while (any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){reader->hasNext();})){
+    while (any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();})){
         std::vector<Block*> blocksToMerge;
         std::multimap<std::string,Tuple*> sortedTuples;
         //read one block of each file and merge them
@@ -134,7 +133,7 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     joinStringTupleIndex rightIndex;
 
     Block* outputBlock = memoryManager->allocateEmptyBlock();
-    while(all_of(leftReader,rightReader,[](BlockReader* reader){reader->hasNext();})) {
+    while(leftReader->hasNext() && rightReader->hasNext()) {
         Block *loadedLeftBlock = leftReader->nextBlock();
         loadedLeftBlocks.push_back(loadedLeftBlock);
         Block *loadedRightBlock = rightReader->nextBlock();

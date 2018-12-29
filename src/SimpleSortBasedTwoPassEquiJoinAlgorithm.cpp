@@ -142,8 +142,8 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
 
         fillBufferIndex(leftJoinAttributeIndex, loadedLeftBlock, leftIndex);
         fillBufferIndex(rightJoinAttributeIndex, loadedRightBlock, rightIndex);
-        
-        while (!rightIndex.empty() || !leftIndex.empty()) {
+        //TODO Handle one empty index, is there a problem?
+        while (!rightIndex.empty() && !leftIndex.empty()) {
             auto smallestLeft = leftIndex.begin();
             auto smallestRight = rightIndex.begin();
             int compareValue = smallestLeft->first.compare(smallestRight->first);
@@ -179,6 +179,7 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
             }
         }
     }
+
     outputBlock->writeBlockToDisk(outputFile);
     memoryManager->deleteBlock(outputBlock);
     for (auto currentBlock : loadedLeftBlocks){

@@ -171,14 +171,18 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                 //TODO how to delete tuples / blocks that are not yet printed to the outputfile but we need to get rid of the blocks and tuples
                 //may be we here should have a custom only block deletion Funktion instead of reusing the removeTuplesWithSameJoinAttribute funktion
                 //cause we know we will need the tuples of the output block, but how to delete the tuples after we printed them, will this be done by the deltion/clearance of the outputblock?
-                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft);
-                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight);
+                /*auto range = leftIndex.equal_range(smallestLeft->first);
+                for (auto it = range.first; it != range.second; ++it){
+                    leftIndex.erase(it);
+                }*/
+                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft, 0);
+                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight, 0);
             } else if (compareValue < 0) { // first char smaller or string shorter <0;
                 //there is no join partner for the smallest left therefore delete these tuples and free memory if block is empty
-                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft);
+                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft, 0);
             } else if (compareValue > 0) { // first char greater or string longer >0
                 //there is no join partner for the smallest right therefore delete these tuples and free memory if block is empty
-                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight);
+                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight, 0);
             }
         }
     }
@@ -204,17 +208,37 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeTuplesWithSameJoinAttribute(vector<Block *> &loadedBlocks,
                                                                                 joinStringTupleIndex &indexStructure,
-                                                                                const multimap<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *, std::less<std::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *>>>::iterator &smallestIterator) {
-    auto range = indexStructure.equal_range(smallestIterator->first);
+                                                                                const multimap<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *, std::less<std::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *>>>::iterator &smallestIterator,
+                                                                                int joinAttributeIndex) {
+    //delete Tuples from loaded Blocks
+    /*auto range = indexStructure.equal_range(smallestIterator->first);
     for (auto it = range.first; it != range.second; ++it){
                     memoryManager->deleteTuple(it->second);
-                    indexStructure.erase(it);
-    }
+                    //indexStructure.erase(it);
+    }*/
+    //delete all tuple entries in index structure with key
+    indexStructure.erase(smallestIterator->first);
+    //delete loaded blocks if they contain only already processed Tuples
+    //vector<Block *> blocksToDelete;
     for (auto currentBlock : loadedBlocks){
-                    if (currentBlock->getCurrentSizeBytes() == 0) {
-                        memoryManager->deleteBlock(currentBlock);
-                    }
+        vector<Tuple *> currentTuples = currentBlock->getTuples();
+        auto alreadyProcessedTuple = [&](Tuple * tuple) -> bool {
+            std::string currentTupleJoinAttribute = tuple->getData(joinAttributeIndex);
+            int compareValue = currentTupleJoinAttribute.compare(smallestIterator->first);
+            //equal: 0 ; string shorter or first char smaller <0
+            if (compareValue <= 0 ) {
+                return true;
+            }
+            return false;
+        };
+        //delete currentBlock if it only contains tuples which join attribute is equal or smaller than the currently processed joinAttribute
+        if (all_of(currentTuples.begin(),currentTuples.end(), alreadyProcessedTuple ) ){
+            //blocksToDelete.push_back(currentBlock);
+            //loadedBlocks.erase
+            memoryManager->deleteBlock(currentBlock);
+        }
     }
+    // clean up dirty cache
     loadedBlocks.erase(std::remove_if(loadedBlocks.begin(),loadedBlocks.end(), [&](Block* block) -> bool {return block->getCurrentSizeBytes() == 0; } ), loadedBlocks.end());
 }
 

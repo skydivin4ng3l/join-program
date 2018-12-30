@@ -74,34 +74,37 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     //read and merge all sorted partial files
     //TODO implement memory limitation
     while (any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();})){
-        std::vector<Block*> blocksToMerge;
-        std::multimap<std::string,Tuple*> sortedTuples;
-        //read one block of each file and merge them
-        for(auto reader : partialFilesReaders){
-            if (reader->hasNext()) {
-                Block* loadedBlock = reader->nextBlock();
-                blocksToMerge.push_back(loadedBlock);
-                for(auto& currentTuple : loadedBlock->getTuples() ) {
-                    sortedTuples.insert( std::make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
+        Block* outputBlock = memoryManager->allocateEmptyBlock();
+        while (memoryManager->getNumFreeBlocks() > partialFilesReaders.size()) {
+            std::vector<Block*> blocksToMerge;
+            std::multimap<std::string,Tuple*> sortedTuples;
+            //read one block of each file and merge them
+            for(auto reader : partialFilesReaders){
+                if (reader->hasNext()) {
+                    Block* loadedBlock = reader->nextBlock();
+                    blocksToMerge.push_back(loadedBlock);
+                    for(auto& currentTuple : loadedBlock->getTuples() ) {
+                        sortedTuples.insert( std::make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
+                    }
                 }
             }
-        }
-        //write the merged blocks
-        Block* outputBlock = memoryManager->allocateEmptyBlock();
-        for(auto it=sortedTuples.begin(); it !=sortedTuples.end(); it++){
-            if (outputBlock->addTuple(it->second)) {} else {
-                outputBlock->writeBlockToDisk(sortedRelationFile);
-                memoryManager->clearBlock(outputBlock);
-                outputBlock->addTuple(it->second);
+            //write the merged blocks
+            for(auto it=sortedTuples.begin(); it !=sortedTuples.end(); it++){
+                if (outputBlock->addTuple(it->second)) {} else {
+                    outputBlock->writeBlockToDisk(sortedRelationFile);
+                    memoryManager->clearBlock(outputBlock);
+                    outputBlock->addTuple(it->second);
+                }
             }
+            //delete the origin blocks and structure
+            for(auto blockToUnload : blocksToMerge) {
+                memoryManager->deleteBlockOnly(blockToUnload);
+            }
+            sortedTuples.clear();
         }
         outputBlock->writeBlockToDisk(sortedRelationFile);
         //free memory
         memoryManager->deleteBlock(outputBlock);
-        for(auto blockToUnload : blocksToMerge) {
-            memoryManager->deleteBlockOnly(blockToUnload);
-        }
-        sortedTuples.clear();
 
     }
 

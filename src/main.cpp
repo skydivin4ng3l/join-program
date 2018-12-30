@@ -16,12 +16,12 @@ int main() {
     MemoryManager manager = MemoryManager(10,50000);
 
     //set these paths to the downloaded data files and pass the relations to the join-method to test with larger amounts of data
-	//Relation r1 = Relation("../resources/movieSample.csv",&manager);
-	//Relation r2 = Relation("../resources/plotSample.csv",&manager);
+	Relation r1 = Relation("../resources/movieSample.csv",&manager);
+	Relation r2 = Relation("../resources/plotSample.csv",&manager);
 
 	//very small test-files
-	Relation r1 = Relation("../resources/testRelation1.csv",&manager);
-    Relation r2 = Relation("../resources/testRelation2.csv",&manager);
+	//Relation r1 = Relation("../resources/testRelation1.csv",&manager);
+    //Relation r2 = Relation("../resources/testRelation2.csv",&manager);
 
 	string outputFile = "output.txt";
 	//deletes output from previous runs:

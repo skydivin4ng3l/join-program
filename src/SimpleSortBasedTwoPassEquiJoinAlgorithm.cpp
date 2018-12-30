@@ -21,6 +21,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     //deletes output from previous runs:
     remove(sortedRelationFile.c_str());
     std::vector<BlockReader*> partialFilesReaders;
+    std::vector<std::string> partialFiles;
     int partialSortedFileNumber = 0;
 
     auto relationReader = relation->getReader();
@@ -66,6 +67,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         //insert the sorted partial file into a data structure for further processing
         Relation partialRelation = Relation(partialSortedFileName,memoryManager);
         partialFilesReaders.push_back(partialRelation.getReader());
+        partialFiles.push_back(partialSortedFileName);
     }
 
     //read and merge all sorted partial files
@@ -101,6 +103,12 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
 
     }
 
+    //comment this for partial progress files------
+    for(auto fileName : partialFiles) {
+        remove(fileName.c_str());
+    }
+    partialFiles.clear();
+    //---------------------------------------------
 
     return sortedRelationFile;
 }
@@ -204,6 +212,11 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
 
     leftIndex.clear();
     rightIndex.clear();
+
+    //comment those for partial progess files---
+    remove(sortedLeftFile.c_str());
+    remove(sortedRightFile.c_str());
+    //------------------------------------------
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeTuplesWithSameJoinAttribute(vector<Block *> &loadedBlocks,

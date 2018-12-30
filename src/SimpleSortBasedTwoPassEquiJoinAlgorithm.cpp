@@ -220,8 +220,8 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeTuplesWithSameJoinAttribute(
     indexStructure.erase(smallestIterator->first);
     //delete loaded blocks if they contain only already processed Tuples
     //vector<Block *> blocksToDelete;
-    for (auto currentBlock : loadedBlocks){
-        vector<Tuple *> currentTuples = currentBlock->getTuples();
+    for (auto block_It = loadedBlocks.begin() ; block_It != loadedBlocks.end(); ){
+        vector<Tuple *> currentTuples = (*block_It)->getTuples();
         auto alreadyProcessedTuple = [&](Tuple * tuple) -> bool {
             std::string currentTupleJoinAttribute = tuple->getData(joinAttributeIndex);
             int compareValue = currentTupleJoinAttribute.compare(smallestIterator->first);
@@ -234,12 +234,14 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeTuplesWithSameJoinAttribute(
         //delete currentBlock if it only contains tuples which join attribute is equal or smaller than the currently processed joinAttribute
         if (all_of(currentTuples.begin(),currentTuples.end(), alreadyProcessedTuple ) ){
             //blocksToDelete.push_back(currentBlock);
-            //loadedBlocks.erase
-            memoryManager->deleteBlock(currentBlock);
+            memoryManager->deleteBlock(*block_It);
+            block_It = loadedBlocks.erase(block_It);
+        } else {
+            block_It++;
         }
     }
     // clean up dirty cache
-    loadedBlocks.erase(std::remove_if(loadedBlocks.begin(),loadedBlocks.end(), [&](Block* block) -> bool {return block->getCurrentSizeBytes() == 0; } ), loadedBlocks.end());
+    //loadedBlocks.erase(std::remove_if(loadedBlocks.begin(),loadedBlocks.end(), [&](Block* block) -> bool {return block->getCurrentSizeBytes() == 0; } ), loadedBlocks.end());
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::fillBufferIndex(int JoinAttributeIndex, Block *loadedBlock,

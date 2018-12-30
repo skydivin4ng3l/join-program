@@ -16,7 +16,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     std::hash<std::string> hash_fn;
     std::size_t hashedFileRelationFileName = hash_fn(relation->getFile());
     std::stringstream ss;
-    ss << "Relation_" << hashedFileRelationFileName << "_SortedBy_"<< joinAttributeIndex << "_JoinAttribute.txt";
+    ss << "Relation_" << hashedFileRelationFileName << "_SortedBy_"<< joinAttributeIndex << "_JoinAttribute.csv";
     std::string sortedRelationFile = ss.str();
     //deletes output from previous runs:
     remove(sortedRelationFile.c_str());
@@ -34,7 +34,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     // repeat until relation complete
 
     while(relationReader->hasNext()){
-        std::string partialSortedFileName = "partialSorted_"+ std::to_string(partialSortedFileNumber)+".txt";
+        std::string partialSortedFileName = "partialSorted_"+ std::to_string(partialSortedFileNumber)+".csv";
         //deletes output from previous runs:
         remove(partialSortedFileName.c_str());
         //Fill Ram with blocks
@@ -60,8 +60,9 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         //free memory
         memoryManager->deleteBlock(outputBlock);
         for(Block* blockToUnload : loadedRelationChunk) {
-            memoryManager->deleteBlockOnly(blockToUnload);
+            memoryManager->deleteBlockOnly(blockToUnload);//why do we here just delete the block the tuples should have been written to the disk
         }
+        loadedRelationChunk.clear();
         indexJoinAttributeToTuple.clear();
         partialSortedFileNumber++;
         //insert the sorted partial file into a data structure for further processing
@@ -71,6 +72,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     }
 
     //read and merge all sorted partial files
+    //TODO implement memory limitation
     while (any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();})){
         std::vector<Block*> blocksToMerge;
         std::multimap<std::string,Tuple*> sortedTuples;

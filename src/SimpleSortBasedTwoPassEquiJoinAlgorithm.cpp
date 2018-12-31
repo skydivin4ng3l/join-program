@@ -35,7 +35,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     // repeat until relation complete
 
     while(relationReader->hasNext()){
-        std::string partialSortedFileName = "partialSorted_"+ std::to_string(partialSortedFileNumber)+".csv";
+        std::string partialSortedFileName = "partialSorted_"+std::to_string(hashedFileRelationFileName)+"_part_"+ std::to_string(partialSortedFileNumber)+".csv";
         //deletes output from previous runs:
         remove(partialSortedFileName.c_str());
         //Fill Ram with blocks
@@ -72,7 +72,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
 
     //read and merge all sorted partial files
     Block* outputBlock = memoryManager->allocateEmptyBlock();
-    memoryManager->printStatus();
+    //memoryManager->printStatus();
     vector<BlockReader*> processableChunkOfFileReaders;
     int availableFreeBlocks = memoryManager->getNumFreeBlocks();
     while (partialFilesReaders.size() > availableFreeBlocks) {

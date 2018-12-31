@@ -74,7 +74,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     //read and merge all sorted partial files
     //TODO implement memory limitation
     Block* outputBlock = memoryManager->allocateEmptyBlock();
-    while (any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();})){
+    while (partialFilesReaders.size() > 1){
         memoryManager->printStatus();
         vector<BlockReader*> processableChunkOfFileReaders;
         int availableFreeBlocks = memoryManager->getNumFreeBlocks();
@@ -84,6 +84,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
             //TODO maybe refactor the next loop into a function so we can use it here and create a new relation of  the result and create a filereader which is inserted into the partialFiles/Readers
         } else {
             processableChunkOfFileReaders = partialFilesReaders;
+            partialFilesReaders.clear();
         }
         while (memoryManager->getNumFreeBlocks() >= processableChunkOfFileReaders.size() &&  any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
             memoryManager->printStatus();

@@ -41,6 +41,13 @@ private:
                                                joinStringTupleIndex &indexStructure,
                                                const multimap<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *, std::less<std::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *>>>::iterator &smallestIterator,
                                                int joinAttributeIndex);
+
+    void mergeSortedFilesIntoFile(vector<BlockReader *> &processableChunkOfFileReaders,
+                                      const string &sortedRelationFile, Block *outputBlock,
+                                      int joinAttributeIndex) const;
+
+    void insertPartialSortedFileIntoDataStructure(vector<BlockReader *> &partialFilesReaders, vector<string> &partialFiles,
+                                                  const string &partialSortedFileName) const;
 };
 
 

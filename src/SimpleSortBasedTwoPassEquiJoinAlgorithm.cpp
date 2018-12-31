@@ -4,6 +4,7 @@
 
 
 #include "SimpleSortBasedTwoPassEquiJoinAlgorithm.h"
+#include <assert.h>
 
 SimpleSortBasedTwoPassEquiJoinAlgorithm::SimpleSortBasedTwoPassEquiJoinAlgorithm(MemoryManager* memoryManager) {
     this->memoryManager = memoryManager;
@@ -66,37 +67,69 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         indexJoinAttributeToTuple.clear();
         partialSortedFileNumber++;
         //insert the sorted partial file into a data structure for further processing
-        Relation partialRelation = Relation(partialSortedFileName,memoryManager);
-        partialFilesReaders.push_back(partialRelation.getReader());
-        partialFiles.push_back(partialSortedFileName);
+        insertPartialSortedFileIntoDataStructure(partialFilesReaders, partialFiles, partialSortedFileName);
     }
 
     //read and merge all sorted partial files
-    //TODO implement memory limitation
     Block* outputBlock = memoryManager->allocateEmptyBlock();
-    while (partialFilesReaders.size() > 1){
-        memoryManager->printStatus();
-        vector<BlockReader*> processableChunkOfFileReaders;
-        int availableFreeBlocks = memoryManager->getNumFreeBlocks();
-        if (partialFilesReaders.size() > availableFreeBlocks) {
-            processableChunkOfFileReaders.insert(processableChunkOfFileReaders.begin(),partialFilesReaders.begin(),partialFilesReaders.begin()+availableFreeBlocks);
-            partialFilesReaders.erase(partialFilesReaders.begin(),partialFilesReaders.begin()+availableFreeBlocks);
-            //TODO maybe refactor the next loop into a function so we can use it here and create a new relation of  the result and create a filereader which is inserted into the partialFiles/Readers
-        } else {
-            processableChunkOfFileReaders = partialFilesReaders;
-            partialFilesReaders.clear();
-        }
-        while (memoryManager->getNumFreeBlocks() >= processableChunkOfFileReaders.size() &&  any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
+    memoryManager->printStatus();
+    vector<BlockReader*> processableChunkOfFileReaders;
+    int availableFreeBlocks = memoryManager->getNumFreeBlocks();
+    while (partialFilesReaders.size() > availableFreeBlocks) {
+        static int filecount = 0;
+        //move possible amount of readers into the process chain
+        processableChunkOfFileReaders.insert(processableChunkOfFileReaders.begin(),partialFilesReaders.begin(),partialFilesReaders.begin()+availableFreeBlocks);
+        partialFilesReaders.erase(partialFilesReaders.begin(),partialFilesReaders.begin()+availableFreeBlocks);
+        //create a new file for partial merged content
+        std::stringstream ss;
+        ss << "Partially_Merged_Relation_" << hashedFileRelationFileName << "_SortedBy_"<< joinAttributeIndex << "_JoinAttribute_part_"<< filecount  <<".csv";
+        string partiallyMergedSortedRelationFile = ss.str();
+        //deletes output from previous runs:
+        remove(partiallyMergedSortedRelationFile.c_str());
+        //merge the files of processableChunk vector into partiallyMergedSortedRelationFile
+        mergeSortedFilesIntoFile(processableChunkOfFileReaders, partiallyMergedSortedRelationFile, outputBlock,
+                                 joinAttributeIndex);
+        insertPartialSortedFileIntoDataStructure(partialFilesReaders, partialFiles, partiallyMergedSortedRelationFile);
+        filecount++;
+        processableChunkOfFileReaders.clear();
+    }
+    mergeSortedFilesIntoFile(partialFilesReaders, sortedRelationFile, outputBlock, joinAttributeIndex);
+    //free memory
+    memoryManager->deleteBlock(outputBlock);
+    partialFilesReaders.clear();
+
+    //comment this for partial progress files------
+    for(auto fileName : partialFiles) {
+        remove(fileName.c_str());
+    }
+    partialFiles.clear();
+    //---------------------------------------------
+
+    return sortedRelationFile;
+}
+
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::insertPartialSortedFileIntoDataStructure(
+        vector<BlockReader *> &partialFilesReaders, vector<string> &partialFiles, const string &partialSortedFileName) const {
+    Relation partialRelation = Relation(partialSortedFileName, memoryManager);
+    partialFilesReaders.push_back(partialRelation.getReader());
+    partialFiles.push_back(partialSortedFileName);
+}
+
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::mergeSortedFilesIntoFile(vector<BlockReader *> &processableChunkOfFileReaders,
+                                                                       const string &sortedRelationFile, Block *outputBlock,
+                                                                       int joinAttributeIndex) const {
+    assert(memoryManager->getNumFreeBlocks() >= processableChunkOfFileReaders.size());
+    while (any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
             memoryManager->printStatus();
-            std::vector<Block*> blocksToMerge;
-            std::multimap<std::string,Tuple*> sortedTuples;
+            vector<Block*> blocksToMerge;
+            multimap<string,Tuple*> sortedTuples;
             //read one block of each file and merge them
             for(auto reader : processableChunkOfFileReaders){
                 if (reader->hasNext()) {
                     Block* loadedBlock = reader->nextBlock();
                     blocksToMerge.push_back(loadedBlock);
                     for(auto& currentTuple : loadedBlock->getTuples() ) {
-                        sortedTuples.insert( std::make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
+                        sortedTuples.insert( make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
                     }
                 }
             }
@@ -115,20 +148,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
             blocksToMerge.clear();
             sortedTuples.clear();
         }
-        outputBlock->writeBlockToDisk(sortedRelationFile);
-        //free memory
-        memoryManager->deleteBlock(outputBlock);
-
-    }
-
-    //comment this for partial progress files------
-    for(auto fileName : partialFiles) {
-        remove(fileName.c_str());
-    }
-    partialFiles.clear();
-    //---------------------------------------------
-
-    return sortedRelationFile;
+    outputBlock->writeBlockToDisk(sortedRelationFile);
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile) {

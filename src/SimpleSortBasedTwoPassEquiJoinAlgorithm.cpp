@@ -74,6 +74,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
     //read and merge all sorted partial files
     //TODO implement memory limitation
     while (any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();})){
+        memoryManager->printStatus();
         Block* outputBlock = memoryManager->allocateEmptyBlock();
         while (memoryManager->getNumFreeBlocks() > partialFilesReaders.size() &&  any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
             std::vector<Block*> blocksToMerge;
@@ -92,7 +93,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
             for(auto it=sortedTuples.begin(); it !=sortedTuples.end(); it++){
                 if (outputBlock->addTuple(it->second)) {} else {
                     outputBlock->writeBlockToDisk(sortedRelationFile);
-                    memoryManager->clearBlock(outputBlock);
+                    memoryManager->deleteBlock(outputBlock);
                     outputBlock->addTuple(it->second);
                 }
             }

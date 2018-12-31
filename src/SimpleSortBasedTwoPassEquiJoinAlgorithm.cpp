@@ -82,13 +82,15 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
             processableChunkOfFileReaders.insert(processableChunkOfFileReaders.begin(),partialFilesReaders.begin(),partialFilesReaders.begin()+availableFreeBlocks);
             partialFilesReaders.erase(partialFilesReaders.begin(),partialFilesReaders.begin()+availableFreeBlocks);
             //TODO maybe refactor the next loop into a function so we can use it here and create a new relation of  the result and create a filereader which is inserted into the partialFiles/Readers
+        } else {
+            processableChunkOfFileReaders = partialFilesReaders;
         }
-        while (memoryManager->getNumFreeBlocks() > partialFilesReaders.size() + 1 &&  any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
+        while (memoryManager->getNumFreeBlocks() >= processableChunkOfFileReaders.size() &&  any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
             memoryManager->printStatus();
             std::vector<Block*> blocksToMerge;
             std::multimap<std::string,Tuple*> sortedTuples;
             //read one block of each file and merge them
-            for(auto reader : partialFilesReaders){
+            for(auto reader : processableChunkOfFileReaders){
                 if (reader->hasNext()) {
                     Block* loadedBlock = reader->nextBlock();
                     blocksToMerge.push_back(loadedBlock);

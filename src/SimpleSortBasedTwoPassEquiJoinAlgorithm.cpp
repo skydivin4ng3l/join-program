@@ -73,10 +73,18 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
 
     //read and merge all sorted partial files
     //TODO implement memory limitation
+    Block* outputBlock = memoryManager->allocateEmptyBlock();
     while (any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();})){
         memoryManager->printStatus();
-        Block* outputBlock = memoryManager->allocateEmptyBlock();
-        while (memoryManager->getNumFreeBlocks() > partialFilesReaders.size() &&  any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
+        vector<BlockReader*> processableChunkOfFileReaders;
+        int availableFreeBlocks = memoryManager->getNumFreeBlocks();
+        if (partialFilesReaders.size() > availableFreeBlocks) {
+            processableChunkOfFileReaders.insert(processableChunkOfFileReaders.begin(),partialFilesReaders.begin(),partialFilesReaders.begin()+availableFreeBlocks);
+            partialFilesReaders.erase(partialFilesReaders.begin(),partialFilesReaders.begin()+availableFreeBlocks);
+            //TODO maybe refactor the next loop into a function so we can use it here and create a new relation of  the result and create a filereader which is inserted into the partialFiles/Readers
+        }
+        while (memoryManager->getNumFreeBlocks() > partialFilesReaders.size() + 1 &&  any_of(partialFilesReaders.begin(), partialFilesReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
+            memoryManager->printStatus();
             std::vector<Block*> blocksToMerge;
             std::multimap<std::string,Tuple*> sortedTuples;
             //read one block of each file and merge them
@@ -93,7 +101,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
             for(auto it=sortedTuples.begin(); it !=sortedTuples.end(); it++){
                 if (outputBlock->addTuple(it->second)) {} else {
                     outputBlock->writeBlockToDisk(sortedRelationFile);
-                    memoryManager->deleteBlock(outputBlock);
+                    memoryManager->clearBlock(outputBlock);
                     outputBlock->addTuple(it->second);
                 }
             }
@@ -101,6 +109,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
             for(auto blockToUnload : blocksToMerge) {
                 memoryManager->deleteBlockOnly(blockToUnload);
             }
+            blocksToMerge.clear();
             sortedTuples.clear();
         }
         outputBlock->writeBlockToDisk(sortedRelationFile);
@@ -189,14 +198,14 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                 for (auto it = range.first; it != range.second; ++it){
                     leftIndex.erase(it);
                 }*/
-                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft, 0);
-                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight, 0);
+                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft, leftJoinAttributeIndex);
+                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight, rightJoinAttributeIndex);
             } else if (compareValue < 0) { // first char smaller or string shorter <0;
                 //there is no join partner for the smallest left therefore delete these tuples and free memory if block is empty
-                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft, 0);
+                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft, leftJoinAttributeIndex);
             } else if (compareValue > 0) { // first char greater or string longer >0
                 //there is no join partner for the smallest right therefore delete these tuples and free memory if block is empty
-                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight, 0);
+                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight, rightJoinAttributeIndex);
             }
         }
     }

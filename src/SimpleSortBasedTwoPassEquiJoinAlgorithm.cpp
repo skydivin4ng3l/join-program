@@ -120,33 +120,33 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::mergeSortedFilesIntoFile(vector<Bl
                                                                        int joinAttributeIndex) const {
     assert(memoryManager->getNumFreeBlocks() >= processableChunkOfFileReaders.size());
     while (any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
-            memoryManager->printStatus();
             vector<Block*> blocksToMerge;
-            multimap<string,Tuple*> sortedTuples;
-            //read one block of each file and merge them
-            for(auto reader : processableChunkOfFileReaders){
-                if (reader->hasNext()) {
-                    Block* loadedBlock = reader->nextBlock();
-                    blocksToMerge.push_back(loadedBlock);
-                    for(auto& currentTuple : loadedBlock->getTuples() ) {
-                        sortedTuples.insert( make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
-                    }
+        multimap<string,Tuple*> sortedTuples;
+        //read one block of each file and merge them
+        for(auto reader : processableChunkOfFileReaders){
+            if (reader->hasNext()) {
+                Block* loadedBlock = reader->nextBlock();
+                blocksToMerge.push_back(loadedBlock);
+                for(auto& currentTuple : loadedBlock->getTuples() ) {
+                    sortedTuples.insert( make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
                 }
             }
-            //write the merged blocks
-            for(auto it=sortedTuples.begin(); it !=sortedTuples.end(); it++){
-                if (outputBlock->addTuple(it->second)) {} else {
-                    outputBlock->writeBlockToDisk(sortedRelationFile);
-                    memoryManager->clearBlock(outputBlock);
-                    outputBlock->addTuple(it->second);
-                }
+        }
+        memoryManager->printStatus();
+        //write the merged blocks
+        for(auto it=sortedTuples.begin(); it !=sortedTuples.end(); it++){
+            if (outputBlock->addTuple(it->second)) {} else {
+                outputBlock->writeBlockToDisk(sortedRelationFile);
+                memoryManager->clearBlock(outputBlock);
+                outputBlock->addTuple(it->second);
             }
-            //delete the origin blocks and structure
-            for(auto blockToUnload : blocksToMerge) {
-                memoryManager->deleteBlockOnly(blockToUnload);
-            }
-            blocksToMerge.clear();
-            sortedTuples.clear();
+        }
+        //delete the origin blocks and structure
+        for(auto blockToUnload : blocksToMerge) {
+            memoryManager->deleteBlockOnly(blockToUnload);
+        }
+        blocksToMerge.clear();
+        sortedTuples.clear();
         }
     outputBlock->writeBlockToDisk(sortedRelationFile);
 }
@@ -180,14 +180,18 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     joinStringTupleIndex rightIndex;
 
     Block* outputBlock = memoryManager->allocateEmptyBlock();
-    while(leftReader->hasNext() && rightReader->hasNext()) {
-        Block *loadedLeftBlock = leftReader->nextBlock();
-        loadedLeftBlocks.push_back(loadedLeftBlock);
-        Block *loadedRightBlock = rightReader->nextBlock();
-        loadedRightBlocks.push_back(loadedRightBlock);
+    while( (leftReader->hasNext() || leftIndex.size() > 0) && (rightReader->hasNext() || rightIndex.size() > 0) && memoryManager->getNumFreeBlocks() >= 2) {
+        if (leftReader->hasNext()) {
+            Block *loadedLeftBlock = leftReader->nextBlock();
+            loadedLeftBlocks.push_back(loadedLeftBlock);
+            fillBufferIndex(leftJoinAttributeIndex, loadedLeftBlock, leftIndex);
+        }
+        if (rightReader->hasNext()) {
+            Block *loadedRightBlock = rightReader->nextBlock();
+            loadedRightBlocks.push_back(loadedRightBlock);
+            fillBufferIndex(rightJoinAttributeIndex, loadedRightBlock, rightIndex);
+        }
 
-        fillBufferIndex(leftJoinAttributeIndex, loadedLeftBlock, leftIndex);
-        fillBufferIndex(rightJoinAttributeIndex, loadedRightBlock, rightIndex);
         //TODO Handle one empty index, is there a problem?
         while (!rightIndex.empty() && !leftIndex.empty()) {
             auto smallestLeft = leftIndex.begin();
@@ -195,17 +199,25 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
             int compareValue = smallestLeft->first.compare(smallestRight->first);
             if (compareValue == 0) { // equal 0; first char smaller or string shorter <0; first char greater or string longer >0
                 //preload all left/right tuples with same join attribute so we can join them all together and then delete them on both sides
-                while (smallestRight->first == rightIndex.rbegin()->first && rightReader->hasNext() && memoryManager->getNumFreeBlocks() >= 1) { //TODO What if the Memory is not enough?
+                while (smallestRight->first == rightIndex.rbegin()->first && rightReader->hasNext() ) { //TODO What if the Memory is not enough?
                     //fill buffer
-                    Block *postLoadedRightBlock = rightReader->nextBlock();
-                    loadedRightBlocks.push_back(postLoadedRightBlock);
-                    fillBufferIndex(rightJoinAttributeIndex, postLoadedRightBlock, rightIndex);
+                    if (memoryManager->getNumFreeBlocks() >= 1) {
+                        Block *postLoadedRightBlock = rightReader->nextBlock();
+                        loadedRightBlocks.push_back(postLoadedRightBlock);
+                        fillBufferIndex(rightJoinAttributeIndex, postLoadedRightBlock, rightIndex);
+                    } else {
+                        std::cout << "ERROR: Not enough memory!" << endl;
+                    }
                 }
                 while (smallestLeft->first == leftIndex.rbegin()->first && leftReader->hasNext() && memoryManager->getNumFreeBlocks() >= 1) { //TODO What if the Memory is not enough?
                     //fill buffer
-                    Block *postLoadedLeftBlock = leftReader->nextBlock();
-                    loadedLeftBlocks.push_back(postLoadedLeftBlock);
-                    fillBufferIndex(leftJoinAttributeIndex, postLoadedLeftBlock, leftIndex);
+                    if (memoryManager->getNumFreeBlocks() >= 1) {
+                        Block *postLoadedLeftBlock = leftReader->nextBlock();
+                        loadedLeftBlocks.push_back(postLoadedLeftBlock);
+                        fillBufferIndex(leftJoinAttributeIndex, postLoadedLeftBlock, leftIndex);
+                    } else {
+                        std::cout << "ERROR: Not enough memory!" << endl;
+                    }
                 }
                 auto rightRange = rightIndex.equal_range(smallestRight->first);
                 auto leftRange = leftIndex.equal_range(smallestLeft->first);

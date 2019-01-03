@@ -66,7 +66,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         memoryManager->deleteBlock(outputBlock);
         indexJoinAttributeToTuple.clear();
         for(Block* blockToUnload : loadedRelationChunk) {
-            memoryManager->deleteBlock(blockToUnload);//why do we here not just delete the block the tuples should have been written to the disk
+            memoryManager->deleteBlockOnly(blockToUnload);//why can't we delete the block with the tuples, they should have been written to the disk
         }
         loadedRelationChunk.clear();
         partialSortedFileNumber++;
@@ -128,13 +128,13 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::mergeSortedFilesIntoFile(vector<Bl
     assert(memoryManager->getNumFreeBlocks() >= processableChunkOfFileReaders.size());
 
     while (any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
-        std::multimap<string,std::pair<Tuple*,relationStatistics*>> sortedTuples;
+        std::multimap<std::string,std::pair<Tuple*,relationStatistics*>> sortedTuples;
         //read one block of each file and fill the tuple into a merge DataStructure
         for(auto reader : processableChunkOfFileReaders){
             if (reader->hasNext()) {
                 Block *loadedBlock = reader->nextBlock();
                 //blocksToMerge.push_back(loadedBlock);
-                relationStatistics *thisRelationStatPointer = new relationStatistics_t(reader,loadedBlock);
+                relationStatistics *thisRelationStatPointer = new relationStatistics(reader,loadedBlock);
                 loadTuplesFromBlockIntoMergeDataStructure(loadedBlock, joinAttributeIndex, sortedTuples,
                                                           thisRelationStatPointer);
             }
@@ -175,8 +175,8 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::cleanUpAndBufferTupleBlock(
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::loadTuplesFromBlockIntoMergeDataStructure(Block *loadedBlock,
                                                                                         int joinAttributeIndex,
-                                                                                        multimap<string, pair<Tuple *, relationStatistics_t *>> &sortedTuples,
-                                                                                        relationStatistics_t *thisRelationStatPointer) const {
+                                                                                        multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuples,
+                                                                                        relationStatistics *thisRelationStatPointer) const {
     if (thisRelationStatPointer->loadedBlocks.empty()) {
         thisRelationStatPointer->loadedBlocks.push(loadedBlock);
     }
@@ -190,8 +190,10 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
 
     //actual joining
     std::string sortedLeftFile = twoPassMultiwayMergeSort(left,leftJoinAttributeIndex);
+    memoryManager->printStatus();
     std::string sortedRightFile = twoPassMultiwayMergeSort(right, rightJoinAttributeIndex);
-    //TODO Phase 2: MergeR und S
+    memoryManager->printStatus();
+    //TODO Phase 2: Merge R and S
     //1.
     //Jeweils ein Block
     //2.
@@ -260,6 +262,7 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                 for (auto leftIt = leftRange.first; leftIt != leftRange.second; ++leftIt) {
                     for (auto rightIt = rightRange.first; rightIt != rightRange.second; ++rightIt) {
                         joinTuples(outputFile,outputBlock,leftIt->second, rightIt->second );
+                        memoryManager->printStatus();
                     }
                 }
                 //TODO how to delete tuples / blocks that are not yet printed to the outputfile but we need to get rid of the blocks and tuples
@@ -360,14 +363,14 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::joinTuples(const string &outputFil
     joinedTupleStrings.insert(joinedTupleStrings.end(),rightTupleStrings.begin(),rightTupleStrings.end());
     Tuple *joinedTuple;
     if (!memoryManager->canCreateTuple(joinedTupleStrings)) {
-                    outputBlock->writeBlockToDisk(outputFile);
-                    memoryManager->clearBlock(outputBlock);
-                }
+        outputBlock->writeBlockToDisk(outputFile);
+        memoryManager->clearBlock(outputBlock);
+    }
     joinedTuple = memoryManager->createTuple(joinedTupleStrings);
 
     if (outputBlock->addTuple(joinedTuple)) {} else {
-                    outputBlock->writeBlockToDisk(outputFile);
-                    memoryManager->clearBlock(outputBlock);
-                    outputBlock->addTuple(joinedTuple);
-                }
+        outputBlock->writeBlockToDisk(outputFile);
+        memoryManager->clearBlock(outputBlock);
+        outputBlock->addTuple(joinedTuple);
+    }
 }

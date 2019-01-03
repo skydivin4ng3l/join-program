@@ -9,10 +9,19 @@
 #include "Relation.h"
 #include "MemoryManager.h"
 #include <map>
+#include <queue>
 
 
 typedef std::multimap<std::string,Tuple*> joinStringTupleIndex;
-typedef std::pair<joinStringTupleIndex,std::vector<Block*>> IndexBlockPointerVectorPair;
+typedef struct relationStatistics_t {
+    BlockReader *thisBlocksReader;
+    std::queue<Block *> loadedBlocks;
+    double loadedTupleCount = 0;
+
+    relationStatistics_t(BlockReader* reader,Block *block, double count = 0): thisBlocksReader(reader),loadedTupleCount(count){
+        loadedBlocks.push(block);
+    }
+} relationStatistics;
 
 class SimpleSortBasedTwoPassEquiJoinAlgorithm {
 
@@ -48,6 +57,12 @@ private:
 
     void insertPartialSortedFileIntoDataStructure(vector<BlockReader *> &partialFilesReaders, vector<string> &partialFiles,
                                                   const string &partialSortedFileName) const;
+
+    void loadTuplesFromBlockIntoMergeDataStructure(Block *loadedBlock, int joinAttributeIndex,
+                                                   multimap<string, pair<Tuple *, relationStatistics_t *>> &sortedTuples,
+                                                   relationStatistics_t *thisRelationStatPointer) const;
+    //decrease loaded Tuple Count, remove first element from DataStructure; if TupleCount is 0: read next Block and add to DataStructure
+    void cleanUpAndBufferTupleBlock(multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuples, int joinAttributeIndex) const;
 };
 
 

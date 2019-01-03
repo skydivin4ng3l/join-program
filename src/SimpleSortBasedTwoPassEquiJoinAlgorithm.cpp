@@ -126,38 +126,64 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::mergeSortedFilesIntoFile(vector<Bl
                                                                        const string &sortedRelationFile, Block *outputBlock,
                                                                        int joinAttributeIndex) const {
     assert(memoryManager->getNumFreeBlocks() >= processableChunkOfFileReaders.size());
-    while (any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
-        vector<Block*> blocksToMerge;
-        std::multimap<string,Tuple*> sortedTuples;
 
-        //read one block of each file and merge them
+    while (any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
+        std::multimap<string,std::pair<Tuple*,relationStatistics*>> sortedTuples;
+        //read one block of each file and fill the tuple into a merge DataStructure
         for(auto reader : processableChunkOfFileReaders){
             if (reader->hasNext()) {
-                Block* loadedBlock = reader->nextBlock();
-                blocksToMerge.push_back(loadedBlock);
-                for(auto& currentTuple : loadedBlock->getTuples() ) {
-                    sortedTuples.insert( make_pair(currentTuple->getData(joinAttributeIndex),currentTuple));
-                }
+                Block *loadedBlock = reader->nextBlock();
+                //blocksToMerge.push_back(loadedBlock);
+                relationStatistics *thisRelationStatPointer = new relationStatistics_t(reader,loadedBlock);
+                loadTuplesFromBlockIntoMergeDataStructure(loadedBlock, joinAttributeIndex, sortedTuples,
+                                                          thisRelationStatPointer);
             }
         }
-        // TODO if one block is empty the correspoding relation reader needs to refill with the next block of this relation
         memoryManager->printStatus();
         //write the merged blocks
-        for(auto it=sortedTuples.begin(); it !=sortedTuples.end(); it++){
-            if (outputBlock->addTuple(it->second)) {} else {
+        //if one block is empty the corresponding relation reader will refill with the next block of this relation
+        while (!sortedTuples.empty()) {
+            Tuple *tupleWithSmallestJoinIndex = sortedTuples.begin()->second.first;
+            if (outputBlock->addTuple(tupleWithSmallestJoinIndex)) {
+                cleanUpAndBufferTupleBlock(sortedTuples, joinAttributeIndex);
+            } else {
                 outputBlock->writeBlockToDisk(sortedRelationFile);
                 memoryManager->clearBlock(outputBlock);
-                outputBlock->addTuple(it->second);
+                outputBlock->addTuple(tupleWithSmallestJoinIndex);
+                cleanUpAndBufferTupleBlock(sortedTuples, joinAttributeIndex);
             }
         }
-        //delete the origin blocks and structure
-        for(auto blockToUnload : blocksToMerge) {
-            memoryManager->deleteBlockOnly(blockToUnload);
-        }
-        blocksToMerge.clear();
         sortedTuples.clear();
         }
     outputBlock->writeBlockToDisk(sortedRelationFile);
+}
+
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::cleanUpAndBufferTupleBlock(
+        multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuples, int joinAttributeIndex) const {
+    relationStatistics *thisRelationStatPointer = sortedTuples.begin()->second.second;
+    thisRelationStatPointer->loadedTupleCount--;
+    if (thisRelationStatPointer->loadedTupleCount == 0) {
+        memoryManager->deleteBlockOnly(thisRelationStatPointer->loadedBlocks.front() );
+        thisRelationStatPointer->loadedBlocks.pop();
+        if (thisRelationStatPointer->thisBlocksReader->hasNext()) {
+            Block *loadedBlock = thisRelationStatPointer->thisBlocksReader->nextBlock();
+            loadTuplesFromBlockIntoMergeDataStructure(loadedBlock, joinAttributeIndex, sortedTuples, thisRelationStatPointer);
+        }
+    }
+    sortedTuples.erase(sortedTuples.begin());
+}
+
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::loadTuplesFromBlockIntoMergeDataStructure(Block *loadedBlock,
+                                                                                        int joinAttributeIndex,
+                                                                                        multimap<string, pair<Tuple *, relationStatistics_t *>> &sortedTuples,
+                                                                                        relationStatistics_t *thisRelationStatPointer) const {
+    if (thisRelationStatPointer->loadedBlocks.empty()) {
+        thisRelationStatPointer->loadedBlocks.push(loadedBlock);
+    }
+    for(auto& currentTuple : loadedBlock->getTuples() ) {
+                    thisRelationStatPointer->loadedTupleCount++;
+                    sortedTuples.insert( make_pair(currentTuple->getData(joinAttributeIndex), make_pair(currentTuple,thisRelationStatPointer)) );
+                }
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* right, int leftJoinAttributeIndex, int rightJoinAttributeIndex,string outputFile) {

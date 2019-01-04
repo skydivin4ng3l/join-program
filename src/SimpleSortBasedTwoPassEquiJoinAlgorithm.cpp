@@ -211,8 +211,6 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     auto leftReader = sortedLeftRelation.getReader();
     auto rightReader = sortedRightRelation.getReader();
 
-    std::queue<Block *> *loadedLeftBlocks = new queue<Block *>();
-    std::queue<Block *> *loadedRightBlocks = new queue<Block *>();
     joinStringTupleBlockStatIndex leftIndex;
     joinStringTupleBlockStatIndex rightIndex;
 
@@ -220,10 +218,10 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     while( (leftReader->hasNext() || !leftIndex.empty()) && (rightReader->hasNext() || !rightIndex.empty()) && memoryManager->getNumFreeBlocks() >= 2) {
 
         if (leftReader->hasNext()) {
-            loadBlockIntoIndex(leftReader, leftIndex, leftJoinAttributeIndex, loadedLeftBlocks);
+            loadBlockIntoIndex(leftReader, leftIndex, leftJoinAttributeIndex);
         }
         if (rightReader->hasNext()) {
-            loadBlockIntoIndex(rightReader, rightIndex, rightJoinAttributeIndex, loadedRightBlocks);
+            loadBlockIntoIndex(rightReader, rightIndex, rightJoinAttributeIndex);
         }
 
         //TODO Handle one empty index, is there a problem?
@@ -236,7 +234,7 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                 while (smallestRight == rightIndex.rbegin()->first && rightReader->hasNext() ) { //TODO What if the Memory is not enough?
                     //fill buffer
                     if (memoryManager->getNumFreeBlocks() >= 1) {
-                        loadBlockIntoIndex(rightReader, rightIndex, rightJoinAttributeIndex, loadedLeftBlocks);
+                        loadBlockIntoIndex(rightReader, rightIndex, rightJoinAttributeIndex);
                     } else {
                         std::cout << "ERROR: Not enough memory!" << endl;
                     }
@@ -244,7 +242,7 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                 while (smallestLeft == leftIndex.rbegin()->first && leftReader->hasNext() && memoryManager->getNumFreeBlocks() >= 1) { //TODO What if the Memory is not enough?
                     //fill buffer
                     if (memoryManager->getNumFreeBlocks() >= 1) {
-                        loadBlockIntoIndex(leftReader, leftIndex, leftJoinAttributeIndex, loadedRightBlocks);
+                        loadBlockIntoIndex(leftReader, leftIndex, leftJoinAttributeIndex);
                     } else {
                         std::cout << "ERROR: Not enough memory!" << endl;
                     }
@@ -257,14 +255,14 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
                         //memoryManager->printStatus();
                     }
                 }
-                removeSmallestTuplesWithSameJoinAttribute2(leftIndex);
-                removeSmallestTuplesWithSameJoinAttribute2(rightIndex);
+                removeSmallestTuplesWithSameJoinAttribute(leftIndex);
+                removeSmallestTuplesWithSameJoinAttribute(rightIndex);
             } else if (compareValue < 0) { // first char smaller or string shorter <0;
                 //there is no join partner for the smallest left therefore delete these tuples and free memory if block is empty
-                removeSmallestTuplesWithSameJoinAttribute2(leftIndex);
+                removeSmallestTuplesWithSameJoinAttribute(leftIndex);
             } else if (compareValue > 0) { // first char greater or string longer >0
                 //there is no join partner for the smallest right therefore delete these tuples and free memory if block is empty
-                removeSmallestTuplesWithSameJoinAttribute2(rightIndex);
+                removeSmallestTuplesWithSameJoinAttribute(rightIndex);
             }
         }
     }
@@ -274,16 +272,12 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     //cleanup
     memoryManager->deleteBlock(outputBlock);
 
-    while (!loadedLeftBlocks->empty()) {
-        memoryManager->deleteBlock(loadedLeftBlocks->front());
-        loadedLeftBlocks->pop();
+    while (!leftIndex.empty()) {
+        removeSmallestTuplesWithSameJoinAttribute(leftIndex);
     }
-    delete loadedLeftBlocks;
-    while (!loadedRightBlocks->empty()) {
-        memoryManager->deleteBlock(loadedRightBlocks->front());
-        loadedRightBlocks->pop();
+    while (!rightIndex.empty()) {
+        removeSmallestTuplesWithSameJoinAttribute(rightIndex);
     }
-    delete loadedRightBlocks;
 
     leftIndex.clear();
     rightIndex.clear();
@@ -294,7 +288,8 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     //------------------------------------------
 }
 
-void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeSmallestTuplesWithSameJoinAttribute2(joinStringTupleBlockStatIndex &indexStructure) const {
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeSmallestTuplesWithSameJoinAttribute(
+        joinStringTupleBlockStatIndex &indexStructure) const {
     auto range =indexStructure.equal_range(indexStructure.begin()->first);
     for (auto it = range.first; it != range.second; ) {
         relationStatistics *thisRelationStatPointer = it->second.second ;
@@ -310,9 +305,8 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeSmallestTuplesWithSameJoinAt
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::loadBlockIntoIndex(BlockReader *reader,
                                                                  joinStringTupleBlockStatIndex &indexStructure,
-                                                                 int joinAttributeIndex, std::queue<Block *> *loadedBlocks) const {
+                                                                 int joinAttributeIndex) const {
     Block *loadedBlock = reader->nextBlock();
-    loadedBlocks->push(loadedBlock); //additional reference for fast cleanup
     relationStatistics *thisRelationStatPointer = new relationStatistics(reader,loadedBlock);
     loadTuplesFromBlockIntoDataStructure(loadedBlock, joinAttributeIndex, indexStructure, thisRelationStatPointer);
 }

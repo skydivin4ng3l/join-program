@@ -62,9 +62,9 @@ private:
 
     void loadBlockIntoIndex(BlockReader *reader,
                                 joinStringTupleBlockStatIndex &indexStructure,
-                                int joinAttributeIndex, std::queue<Block *> *loadedBlocks) const;
+                                int joinAttributeIndex) const;
 
-    void removeSmallestTuplesWithSameJoinAttribute2(joinStringTupleBlockStatIndex &indexStructure) const;
+    void removeSmallestTuplesWithSameJoinAttribute(joinStringTupleBlockStatIndex &indexStructure) const;
 };
 
 

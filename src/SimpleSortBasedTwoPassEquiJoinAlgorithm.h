@@ -13,7 +13,7 @@
 
 
 typedef std::multimap<std::string,Tuple*> joinStringTupleIndex;
-typedef struct relationStatistics {
+struct relationStatistics {
     BlockReader *thisBlocksReader;
     std::queue<Block *> loadedBlocks;
     double loadedTupleCount = 0;
@@ -21,8 +21,9 @@ typedef struct relationStatistics {
     relationStatistics(BlockReader* reader,Block *block): thisBlocksReader(reader),loadedBlocks(),loadedTupleCount(0){
         loadedBlocks.push(block);
     };
-    ~relationStatistics();
-} relationStatistics;
+    ~relationStatistics()= default;
+};
+typedef std::multimap<std::string,std::pair<Tuple*,relationStatistics*>> joinStringTupleBlockStatIndex;
 
 class SimpleSortBasedTwoPassEquiJoinAlgorithm {
 
@@ -45,13 +46,6 @@ private:
     void
     joinTuples(const string &outputFile, Block *outputBlock, Tuple *& leftTuples, Tuple *& rightTuples) const;
 
-    void fillBufferIndex(int JoinAttributeIndex, Block *loadedBlock, joinStringTupleIndex &indexStructure) const;
-
-    void removeTuplesWithSameJoinAttribute(vector<Block *> &loadedBlocks,
-                                               joinStringTupleIndex &indexStructure,
-                                               const multimap<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *, std::less<std::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *>>>::iterator &smallestIterator,
-                                               int joinAttributeIndex);
-
     void mergeSortedFilesIntoFile(vector<BlockReader *> &processableChunkOfFileReaders,
                                       const string &sortedRelationFile, Block *outputBlock,
                                       int joinAttributeIndex) const;
@@ -59,11 +53,18 @@ private:
     void insertPartialSortedFileIntoDataStructure(vector<BlockReader *> &partialFilesReaders, vector<string> &partialFiles,
                                                   const string &partialSortedFileName) const;
 
-    void loadTuplesFromBlockIntoMergeDataStructure(Block *loadedBlock, int joinAttributeIndex,
-                                                   multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuples,
-                                                   relationStatistics *thisRelationStatPointer) const;
+    void loadTuplesFromBlockIntoDataStructure(Block *loadedBlock, int joinAttributeIndex,
+                                              multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuplesIndex,
+                                              relationStatistics *thisRelationStatPointer) const;
     //decrease loaded Tuple Count, remove first element from DataStructure; if TupleCount is 0: read next Block and add to DataStructure
-    void cleanUpAndBufferTupleBlock(multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuples, int joinAttributeIndex) const;
+    void cleanUpAndBufferTupleBlock(multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuples,
+                                    int joinAttributeIndex) const;
+
+    void loadBlockIntoIndex(BlockReader *reader,
+                                joinStringTupleBlockStatIndex &indexStructure,
+                                int joinAttributeIndex, std::queue<Block *> *loadedBlocks) const;
+
+    void removeSmallestTuplesWithSameJoinAttribute2(joinStringTupleBlockStatIndex &indexStructure) const;
 };
 
 

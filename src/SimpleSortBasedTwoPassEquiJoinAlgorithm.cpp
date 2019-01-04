@@ -100,6 +100,7 @@ std::string SimpleSortBasedTwoPassEquiJoinAlgorithm::twoPassMultiwayMergeSort(Re
         filecount++;
         processableChunkOfFileReaders.clear();
     }
+    memoryManager->clearBlock(outputBlock);
     mergeSortedFilesIntoFile(partialFilesReaders, sortedRelationFile, outputBlock, joinAttributeIndex);
     //free memory
     memoryManager->deleteBlock(outputBlock);
@@ -128,18 +129,17 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::mergeSortedFilesIntoFile(vector<Bl
     assert(memoryManager->getNumFreeBlocks() >= processableChunkOfFileReaders.size());
 
     while (any_of(processableChunkOfFileReaders.begin(), processableChunkOfFileReaders.end(), [](BlockReader* reader){ return reader->hasNext();}) ) {
-        std::multimap<std::string,std::pair<Tuple*,relationStatistics*>> sortedTuples;
+        joinStringTupleBlockStatIndex sortedTuples;
         //read one block of each file and fill the tuple into a merge DataStructure
         for(auto reader : processableChunkOfFileReaders){
             if (reader->hasNext()) {
                 Block *loadedBlock = reader->nextBlock();
-                //blocksToMerge.push_back(loadedBlock);
                 relationStatistics *thisRelationStatPointer = new relationStatistics(reader,loadedBlock);
-                loadTuplesFromBlockIntoMergeDataStructure(loadedBlock, joinAttributeIndex, sortedTuples,
-                                                          thisRelationStatPointer);
+                loadTuplesFromBlockIntoDataStructure(loadedBlock, joinAttributeIndex, sortedTuples,
+                                                     thisRelationStatPointer);
             }
         }
-        memoryManager->printStatus();
+        //memoryManager->printStatus();
         //write the merged blocks
         //if one block is empty the corresponding relation reader will refill with the next block of this relation
         while (!sortedTuples.empty()) {
@@ -159,7 +159,7 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::mergeSortedFilesIntoFile(vector<Bl
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::cleanUpAndBufferTupleBlock(
-        multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuples, int joinAttributeIndex) const {
+        joinStringTupleBlockStatIndex &sortedTuples, int joinAttributeIndex) const {
     relationStatistics *thisRelationStatPointer = sortedTuples.begin()->second.second;
     thisRelationStatPointer->loadedTupleCount--;
     if (thisRelationStatPointer->loadedTupleCount == 0) {
@@ -167,22 +167,22 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::cleanUpAndBufferTupleBlock(
         thisRelationStatPointer->loadedBlocks.pop();
         if (thisRelationStatPointer->thisBlocksReader->hasNext()) {
             Block *loadedBlock = thisRelationStatPointer->thisBlocksReader->nextBlock();
-            loadTuplesFromBlockIntoMergeDataStructure(loadedBlock, joinAttributeIndex, sortedTuples, thisRelationStatPointer);
+            loadTuplesFromBlockIntoDataStructure(loadedBlock, joinAttributeIndex, sortedTuples, thisRelationStatPointer);
         }
     }
     sortedTuples.erase(sortedTuples.begin());
 }
 
-void SimpleSortBasedTwoPassEquiJoinAlgorithm::loadTuplesFromBlockIntoMergeDataStructure(Block *loadedBlock,
-                                                                                        int joinAttributeIndex,
-                                                                                        multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuples,
-                                                                                        relationStatistics *thisRelationStatPointer) const {
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::loadTuplesFromBlockIntoDataStructure(Block *loadedBlock,
+                                                                                   int joinAttributeIndex,
+                                                                                   multimap<string, pair<Tuple *, relationStatistics *>> &sortedTuplesIndex,
+                                                                                   relationStatistics *thisRelationStatPointer) const {
     if (thisRelationStatPointer->loadedBlocks.empty()) {
         thisRelationStatPointer->loadedBlocks.push(loadedBlock);
     }
     for(auto& currentTuple : loadedBlock->getTuples() ) {
                     thisRelationStatPointer->loadedTupleCount++;
-                    sortedTuples.insert( make_pair(currentTuple->getData(joinAttributeIndex), make_pair(currentTuple,thisRelationStatPointer)) );
+                    sortedTuplesIndex.insert( make_pair(currentTuple->getData(joinAttributeIndex), make_pair(currentTuple,thisRelationStatPointer)) );
                 }
 }
 
@@ -190,9 +190,9 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
 
     //actual joining
     std::string sortedLeftFile = twoPassMultiwayMergeSort(left,leftJoinAttributeIndex);
-    memoryManager->printStatus();
+    //memoryManager->printStatus();
     std::string sortedRightFile = twoPassMultiwayMergeSort(right, rightJoinAttributeIndex);
-    memoryManager->printStatus();
+    //memoryManager->printStatus();
     //TODO Phase 2: Merge R and S
     //1.
     //Jeweils ein Block
@@ -211,75 +211,60 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     auto leftReader = sortedLeftRelation.getReader();
     auto rightReader = sortedRightRelation.getReader();
 
-    vector<Block *> loadedLeftBlocks;
-    vector<Block *> loadedRightBlocks;
-    joinStringTupleIndex leftIndex;
-    joinStringTupleIndex rightIndex;
+    std::queue<Block *> *loadedLeftBlocks = new queue<Block *>();
+    std::queue<Block *> *loadedRightBlocks = new queue<Block *>();
+    joinStringTupleBlockStatIndex leftIndex;
+    joinStringTupleBlockStatIndex rightIndex;
 
     Block* outputBlock = memoryManager->allocateEmptyBlock();
     while( (leftReader->hasNext() || !leftIndex.empty()) && (rightReader->hasNext() || !rightIndex.empty()) && memoryManager->getNumFreeBlocks() >= 2) {
 
         if (leftReader->hasNext()) {
-            Block *loadedLeftBlock = leftReader->nextBlock();
-            loadedLeftBlocks.push_back(loadedLeftBlock);
-            fillBufferIndex(leftJoinAttributeIndex, loadedLeftBlock, leftIndex);
+            loadBlockIntoIndex(leftReader, leftIndex, leftJoinAttributeIndex, loadedLeftBlocks);
         }
         if (rightReader->hasNext()) {
-            Block *loadedRightBlock = rightReader->nextBlock();
-            loadedRightBlocks.push_back(loadedRightBlock);
-            fillBufferIndex(rightJoinAttributeIndex, loadedRightBlock, rightIndex);
+            loadBlockIntoIndex(rightReader, rightIndex, rightJoinAttributeIndex, loadedRightBlocks);
         }
 
         //TODO Handle one empty index, is there a problem?
         while (!rightIndex.empty() && !leftIndex.empty()) {
-            auto smallestLeft = leftIndex.begin();
-            auto smallestRight = rightIndex.begin();
-            int compareValue = smallestLeft->first.compare(smallestRight->first);
+            auto smallestLeft = leftIndex.begin()->first;
+            auto smallestRight = rightIndex.begin()->first;
+            int compareValue = smallestLeft.compare(smallestRight);
             if (compareValue == 0) { // equal 0; first char smaller or string shorter <0; first char greater or string longer >0
                 //preload all left/right tuples with same join attribute so we can join them all together and then delete them on both sides
-                while (smallestRight->first == rightIndex.rbegin()->first && rightReader->hasNext() ) { //TODO What if the Memory is not enough?
+                while (smallestRight == rightIndex.rbegin()->first && rightReader->hasNext() ) { //TODO What if the Memory is not enough?
                     //fill buffer
                     if (memoryManager->getNumFreeBlocks() >= 1) {
-                        Block *postLoadedRightBlock = rightReader->nextBlock();
-                        loadedRightBlocks.push_back(postLoadedRightBlock);
-                        fillBufferIndex(rightJoinAttributeIndex, postLoadedRightBlock, rightIndex);
+                        loadBlockIntoIndex(rightReader, rightIndex, rightJoinAttributeIndex, loadedLeftBlocks);
                     } else {
                         std::cout << "ERROR: Not enough memory!" << endl;
                     }
                 }
-                while (smallestLeft->first == leftIndex.rbegin()->first && leftReader->hasNext() && memoryManager->getNumFreeBlocks() >= 1) { //TODO What if the Memory is not enough?
+                while (smallestLeft == leftIndex.rbegin()->first && leftReader->hasNext() && memoryManager->getNumFreeBlocks() >= 1) { //TODO What if the Memory is not enough?
                     //fill buffer
                     if (memoryManager->getNumFreeBlocks() >= 1) {
-                        Block *postLoadedLeftBlock = leftReader->nextBlock();
-                        loadedLeftBlocks.push_back(postLoadedLeftBlock);
-                        fillBufferIndex(leftJoinAttributeIndex, postLoadedLeftBlock, leftIndex);
+                        loadBlockIntoIndex(leftReader, leftIndex, leftJoinAttributeIndex, loadedRightBlocks);
                     } else {
                         std::cout << "ERROR: Not enough memory!" << endl;
                     }
                 }
-                auto rightRange = rightIndex.equal_range(smallestRight->first);
-                auto leftRange = leftIndex.equal_range(smallestLeft->first);
+                auto rightRange = rightIndex.equal_range(smallestRight);
+                auto leftRange = leftIndex.equal_range(smallestLeft);
                 for (auto leftIt = leftRange.first; leftIt != leftRange.second; ++leftIt) {
                     for (auto rightIt = rightRange.first; rightIt != rightRange.second; ++rightIt) {
-                        joinTuples(outputFile,outputBlock,leftIt->second, rightIt->second );
-                        memoryManager->printStatus();
+                        joinTuples(outputFile,outputBlock,leftIt->second.first, rightIt->second.first );
+                        //memoryManager->printStatus();
                     }
                 }
-                //TODO how to delete tuples / blocks that are not yet printed to the outputfile but we need to get rid of the blocks and tuples
-                //may be we here should have a custom only block deletion Funktion instead of reusing the removeTuplesWithSameJoinAttribute funktion
-                //cause we know we will need the tuples of the output block, but how to delete the tuples after we printed them, will this be done by the deltion/clearance of the outputblock?
-                /*auto range = leftIndex.equal_range(smallestLeft->first);
-                for (auto it = range.first; it != range.second; ++it){
-                    leftIndex.erase(it);
-                }*/
-                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft, leftJoinAttributeIndex);
-                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight, rightJoinAttributeIndex);
+                removeSmallestTuplesWithSameJoinAttribute2(leftIndex);
+                removeSmallestTuplesWithSameJoinAttribute2(rightIndex);
             } else if (compareValue < 0) { // first char smaller or string shorter <0;
                 //there is no join partner for the smallest left therefore delete these tuples and free memory if block is empty
-                removeTuplesWithSameJoinAttribute(loadedLeftBlocks, leftIndex, smallestLeft, leftJoinAttributeIndex);
+                removeSmallestTuplesWithSameJoinAttribute2(leftIndex);
             } else if (compareValue > 0) { // first char greater or string longer >0
                 //there is no join partner for the smallest right therefore delete these tuples and free memory if block is empty
-                removeTuplesWithSameJoinAttribute(loadedRightBlocks, rightIndex, smallestRight, rightJoinAttributeIndex);
+                removeSmallestTuplesWithSameJoinAttribute2(rightIndex);
             }
         }
     }
@@ -289,15 +274,16 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     //cleanup
     memoryManager->deleteBlock(outputBlock);
 
-    for (auto currentBlock : loadedLeftBlocks){
-        memoryManager->deleteBlock(currentBlock);
+    while (!loadedLeftBlocks->empty()) {
+        memoryManager->deleteBlock(loadedLeftBlocks->front());
+        loadedLeftBlocks->pop();
     }
-    loadedLeftBlocks.clear();
-
-    for (auto currentBlock : loadedRightBlocks){
-        memoryManager->deleteBlock(currentBlock);
+    delete loadedLeftBlocks;
+    while (!loadedRightBlocks->empty()) {
+        memoryManager->deleteBlock(loadedRightBlocks->front());
+        loadedRightBlocks->pop();
     }
-    loadedRightBlocks.clear();
+    delete loadedRightBlocks;
 
     leftIndex.clear();
     rightIndex.clear();
@@ -308,49 +294,27 @@ void SimpleSortBasedTwoPassEquiJoinAlgorithm::join(Relation* left, Relation* rig
     //------------------------------------------
 }
 
-void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeTuplesWithSameJoinAttribute(vector<Block *> &loadedBlocks,
-                                                                                joinStringTupleIndex &indexStructure,
-                                                                                const multimap<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *, std::less<std::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::basic_string<char, std::char_traits<char>, std::allocator<char>>, Tuple *>>>::iterator &smallestIterator,
-                                                                                int joinAttributeIndex) {
-    //delete Tuples from loaded Blocks
-    /*auto range = indexStructure.equal_range(smallestIterator->first);
-    for (auto it = range.first; it != range.second; ++it){
-                    memoryManager->deleteTuple(it->second);
-                    //indexStructure.erase(it);
-    }*/
-    //delete all tuple entries in index structure with key
-    indexStructure.erase(smallestIterator->first);
-    //delete loaded blocks if they contain only already processed Tuples
-    //vector<Block *> blocksToDelete;
-    for (auto block_It = loadedBlocks.begin() ; block_It != loadedBlocks.end(); ){
-        vector<Tuple *> currentTuples = (*block_It)->getTuples();
-        auto alreadyProcessedTuple = [&](Tuple * tuple) -> bool {
-            std::string currentTupleJoinAttribute = tuple->getData(joinAttributeIndex);
-            int compareValue = currentTupleJoinAttribute.compare(smallestIterator->first);
-            //equal: 0 ; string shorter or first char smaller <0
-            if (compareValue <= 0 ) {
-                return true;
-            }
-            return false;
-        };
-        //delete currentBlock if it only contains tuples which join attribute is equal or smaller than the currently processed joinAttribute
-        if (all_of(currentTuples.begin(),currentTuples.end(), alreadyProcessedTuple ) ){
-            //blocksToDelete.push_back(currentBlock);
-            memoryManager->deleteBlock(*block_It);
-            block_It = loadedBlocks.erase(block_It);
-        } else {
-            block_It++;
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::removeSmallestTuplesWithSameJoinAttribute2(joinStringTupleBlockStatIndex &indexStructure) const {
+    auto range =indexStructure.equal_range(indexStructure.begin()->first);
+    for (auto it = range.first; it != range.second; ) {
+        relationStatistics *thisRelationStatPointer = it->second.second ;
+        thisRelationStatPointer->loadedTupleCount--;
+        if (thisRelationStatPointer->loadedTupleCount == 0) {
+            memoryManager->deleteBlock(thisRelationStatPointer->loadedBlocks.front() );
+            thisRelationStatPointer->loadedBlocks.pop();
+            delete thisRelationStatPointer;
         }
+        it = indexStructure.erase(it);
     }
-    // clean up dirty cache
-    //loadedBlocks.erase(std::remove_if(loadedBlocks.begin(),loadedBlocks.end(), [&](Block* block) -> bool {return block->getCurrentSizeBytes() == 0; } ), loadedBlocks.end());
 }
 
-void SimpleSortBasedTwoPassEquiJoinAlgorithm::fillBufferIndex(int JoinAttributeIndex, Block *loadedBlock,
-                                                              joinStringTupleIndex &indexStructure) const {
-    for (auto &currentTuple : loadedBlock->getTuples()) {
-            indexStructure.insert(make_pair(currentTuple->getData(JoinAttributeIndex), currentTuple));
-        }
+void SimpleSortBasedTwoPassEquiJoinAlgorithm::loadBlockIntoIndex(BlockReader *reader,
+                                                                 joinStringTupleBlockStatIndex &indexStructure,
+                                                                 int joinAttributeIndex, std::queue<Block *> *loadedBlocks) const {
+    Block *loadedBlock = reader->nextBlock();
+    loadedBlocks->push(loadedBlock); //additional reference for fast cleanup
+    relationStatistics *thisRelationStatPointer = new relationStatistics(reader,loadedBlock);
+    loadTuplesFromBlockIntoDataStructure(loadedBlock, joinAttributeIndex, indexStructure, thisRelationStatPointer);
 }
 
 void SimpleSortBasedTwoPassEquiJoinAlgorithm::joinTuples(const string &outputFile, Block *outputBlock,
